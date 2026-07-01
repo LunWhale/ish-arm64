@@ -315,11 +315,22 @@ noreturn void do_exit_group(int status) {
                         sighand_release(task->sighand);
                         task->sighand = NULL;
                     }
-                    if (task->mm != NULL) {
-                        mm_release(task->mm);
-                        task->mm = NULL;
-                        task->mem = NULL;
-                    }
+                    // [T-ish-mem-uaf-user-write] DO NOT mm_release() a stuck
+                    // thread's mm here. This thread is, by definition, still
+                    // running inside an uninterruptible host syscall (e.g. a
+                    // sys_read → user_write blocked on a pipe), and may be about
+                    // to dereference task->mem to copy data back to guest memory.
+                    // Freeing the mm out from under it — as the old code did —
+                    // is a use-after-free: the thread then read_wrlock()s a
+                    // destroyed lock and crashes (EXC_BAD_ACCESS at 0x38 =
+                    // offsetof(struct mem, lock)). Leaving task->mm/task->mem
+                    // intact keeps that access valid; if the thread ever
+                    // unblocks it runs its own do_exit(), which mm_release()s
+                    // correctly. The cost is a leaked mm for a thread that never
+                    // returns — the same "accept the leak, not heap corruption"
+                    // tradeoff this whole safety valve already makes for the
+                    // thread itself. Only the fd table is released so blocked
+                    // pipe readers get EOF (mm_release does not affect that).
                     if (task->files != NULL) {
                         fdtable_release(task->files);
                         task->files = NULL;
