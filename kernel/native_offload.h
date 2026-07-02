@@ -83,4 +83,99 @@ int native_offload_exec(const char *native_path,
 // Returns true if the signal was forwarded.
 bool native_offload_forward_signal(struct task *task, int sig);
 
+// ============================================================================
+// Symbol-level native offload (ARM64 guest only)
+// ============================================================================
+//
+// The API above offloads at *binary* granularity: a whole guest command
+// (matched by execve) runs as a host process or in-process main(). The API
+// below offloads at *function* granularity: a single guest function (matched
+// by its entry PC) runs as a native handler, skipping gadget translation for
+// that call. Same "native offload" concept, finer grain.
+//
+// Use binary-level for "run this whole tool natively" (curl, ffmpeg).
+// Use symbol-level for "run this hot function natively" (memcpy, Py compile).
+//
+//   // 1. Define a handler that reads guest args and writes results.
+//   static enum nsym_result my_memcpy(struct nsym_ctx *c, void *user) {
+//       addr_t dst = nsym_arg(c, 0), src = nsym_arg(c, 1);
+//       uint64_t n = nsym_arg(c, 2);
+//       // ... value-copy via nsym_read/nsym_write ...
+//       nsym_set_ret(c, dst);
+//       return NSYM_HANDLED;   // or NSYM_DECLINED to fall back to guest code
+//   }
+//   // 2. Register (binary basename + symbol name).
+//   native_offload_add_symbol("libc.musl-aarch64.so.1", "memcpy",
+//                             my_memcpy, NULL);
+//
+// Lossless: if disabled (ISH_OFFLOAD unset), unmatched, or a handler returns
+// NSYM_DECLINED, the guest executes its own code unchanged.
+
+#include <stdint.h>
+#include "misc.h"   /* addr_t */
+struct tlb;
+struct cpu_state;
+
+enum nsym_result {
+    NSYM_HANDLED,    /* handler did the work; resume guest per ctx->resume */
+    NSYM_DECLINED,   /* handler opted out; run the guest function normally */
+};
+
+enum nsym_resume {
+    NSYM_RESUME_RET, /* return to link register (x30) — normal call return */
+    NSYM_RESUME_PC,  /* jump to ctx->resume_pc (handler set it explicitly) */
+};
+
+// Context for a symbol-level handler: wraps guest CPU + TLB. All memory
+// access is value-copy (fork/CoW safe), matching the mem* bypass discipline.
+struct nsym_ctx {
+    struct cpu_state *cpu;
+    struct tlb *tlb;
+    enum nsym_resume resume;   /* handler sets this; default RET */
+    addr_t resume_pc;          /* used when resume == NSYM_RESUME_PC */
+};
+
+// AArch64 AAPCS64: integer args in x0..x7, return in x0.
+uint64_t nsym_arg(struct nsym_ctx *ctx, int n);
+void     nsym_set_ret(struct nsym_ctx *ctx, uint64_t v);
+// Guest memory access — value-copy, fork-safe. Return false on fault.
+bool nsym_read(struct nsym_ctx *ctx, addr_t gaddr, void *buf, size_t len);
+bool nsym_write(struct nsym_ctx *ctx, addr_t gaddr, const void *buf, size_t len);
+
+typedef enum nsym_result (*nsym_handler_func)(struct nsym_ctx *ctx, void *user);
+
+// Register a symbol-level offload: (binary basename, symbol) -> handler.
+// addr_hint is a fixed guest entry address for the no-ASLR case (0 = resolve
+// by name later via native_offload_bind_symbol). Returns id >=0 or -1.
+int native_offload_add_symbol(const char *binary, const char *symbol,
+                              nsym_handler_func handler, void *user);
+
+// Bind a registered symbol to a runtime entry address (called by the loader
+// when a matching binary maps a matching symbol). Idempotent.
+void native_offload_bind_symbol(const char *binary, const char *symbol, addr_t addr);
+
+// Dispatch hook — called from the ARM64 JIT loop with the current guest PC.
+// Returns true if a handler fired (guest state advanced), false to run guest
+// code. Cheap on the common miss (a few address compares).
+bool native_offload_sym_dispatch(addr_t pc, struct cpu_state *cpu, struct tlb *tlb);
+
+// True when at least one symbol target is registered. The dispatch loop
+// checks this to skip the scan entirely when nothing is registered — offload
+// is lossless, so "registered == active" is the only gate (no env switch,
+// matching binary-level offload where registration alone enables it).
+bool native_offload_sym_active(void);
+
+// Register built-in symbol targets (mem* for verification; Python compile
+// when built with -DISH_OFFLOAD_PYCOMPILE). Called once from _sym_active().
+// A no-op unless the relevant env/build flags are set.
+void native_offload_sym_init_builtins(void);
+
+// Register a symbol target with a fixed guest entry address (no-ASLR case),
+// pre-binding it immediately instead of waiting for loader resolution.
+// Prefer native_offload_add_symbol + native_offload_bind_symbol when symbol
+// resolution is available.
+int native_offload_add_symbol_hinted(const char *binary, const char *symbol,
+                                     addr_t addr_hint, nsym_handler_func handler,
+                                     void *user);
+
 #endif

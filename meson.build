@@ -101,6 +101,10 @@ elif guest_arch == 'arm64'
         'asbestos/guest-arm64/gen.c',
         'asbestos/guest-arm64/crypto_helpers.c',
         'asbestos/helpers.c',
+        # Symbol-level native offload (ARM64 guest only). Companion to the
+        # binary-level offload in kernel/native_offload.c.
+        'kernel/native_offload_sym.c',
+        'kernel/native_offload_sym_builtins.c',
         gadgets+'/entry.S',
         gadgets+'/memory.S',
         gadgets+'/control.S',

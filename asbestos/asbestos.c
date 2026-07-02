@@ -14,6 +14,9 @@
 #include "kernel/memory.h"
 #include "util/list.h"
 #include "util/signpost.h"
+#ifdef GUEST_ARM64
+#include "kernel/native_offload.h"
+#endif
 
 // Thread-local recovery state for JIT crash handling.
 // When a host SIGSEGV occurs inside JIT code (due to a stale TLB pointer
@@ -433,6 +436,37 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
             cpu->pc = 0;
             return INT_GPF;
         }
+#ifdef GUEST_ARM64
+        // --- Pluggable native offload (ARM64 guest only) ---
+        // If a native handler is registered for this guest PC, run it instead
+        // of compiling/dispatching the guest function. Lossless: when nothing
+        // is registered, no target matches, or a handler declines, we fall
+        // through to the normal gadget path below. No env gate — the scan is
+        // skipped entirely unless a target is registered (native_offload_sym_active).
+        if (native_offload_sym_active()) {
+            // Refresh TLB before any bypass translation: after fork/mmap the
+            // page table may have changed and stale entries point into the
+            // parent's CoW pages. Handlers do value-copy that needs fresh TLB.
+            if (tlb->mem_changes != __atomic_load_n(&tlb->mmu->changes, __ATOMIC_ACQUIRE)) {
+                tlb_flush(tlb);
+                memset(cache, 0, sizeof(tlb->block_cache));
+                tlb->block_cache_gen = asbestos->invalidate_gen;
+                memset(frame->ret_cache, 0, sizeof(frame->ret_cache));
+                frame->last_block = NULL;
+            }
+            if (native_offload_sym_dispatch(ip, &frame->cpu, tlb)) {
+                // Handler advanced cpu->pc. Keep dispatch-loop state consistent
+                // (poke/timer checks the gadget path would do) and re-enter.
+                frame->last_block = NULL;
+                interrupt = INT_NONE;
+                if (__atomic_exchange_n(frame->cpu.poked_ptr, false, __ATOMIC_ACQUIRE))
+                    interrupt = INT_TIMER;
+                else if ((++frame->cpu.cycle & ((1 << 10) - 1)) == 0)
+                    interrupt = INT_TIMER;
+                continue;
+            }
+        }
+#endif
         // Trace-JIT bypass: if a native translation already exists for
         // this PC (in the dispatch table), skip the gadget block compile
         // and run native instead. If no translation exists yet, kick off
