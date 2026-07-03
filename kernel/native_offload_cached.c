@@ -66,5 +66,6 @@ bool native_offload_cached_active(void) {
 
 void native_offload_cached_init(void) {
     /* Register shipped cached-gadget targets here (generated spec_fns declared
-     * extern from the offline tool's output). None yet. */
+     * extern from the offline tool's output). None yet. Test handlers self-
+     * register via a constructor in kernel/offload_tests/ (no hook needed). */
 }

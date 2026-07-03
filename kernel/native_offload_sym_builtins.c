@@ -23,4 +23,5 @@ void native_offload_sym_init_builtins(void) {
     native_offload_add_symbol("libpython3.12.so.1.0", "Py_CompileStringExFlags",
                               native_offload_pycompile_handler, NULL);
 #endif
+    /* Test handlers self-register via a constructor in kernel/offload_tests/. */
 }

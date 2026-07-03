@@ -119,6 +119,24 @@ endif
 
 libish_emu = library('ish_emu', emu_src, include_directories: includes)
 
+# Per-offload verification handlers (dev only, ARM64). Default off: the test
+# files do NOT compile at all. Each offload type has its own switch + files, so
+# they build in isolation. The handlers self-register via a constructor (the
+# product core has NO test hook), so their objects must be link_whole'd to
+# survive dead-strip. Added to `offload_test_libs`, link_whole'd into ish below.
+offload_test_libs = []
+if get_option('offload_test_symbol') and guest_arch == 'arm64'
+    offload_test_libs += static_library('offload_test_symbol',
+        ['kernel/offload_tests/symbol/register.c'],
+        include_directories: includes)
+endif
+if get_option('offload_test_cached') and guest_arch == 'arm64'
+    offload_test_libs += static_library('offload_test_cached',
+        ['kernel/offload_tests/cached/register.c',
+         'kernel/offload_tests/cached/spec_mix.c'],
+        include_directories: includes)
+endif
+
 libfakefs = library('fakefs',
     ['fs/fake-db.c', 'fs/fake-migrate.c', 'fs/fake-rebuild.c'],
     include_directories: includes,
@@ -220,6 +238,9 @@ if get_option('kernel') == 'ish'
         include_directories: includes)
     ish = declare_dependency(
         link_with: [libish, libish_emu, libfakefs],
+        # link_whole so the offload test handlers' self-registering constructors
+        # survive dead-strip (empty unless -Doffload_test_*=true).
+        link_whole: offload_test_libs,
         dependencies: dependencies,
         include_directories: includes)
 
