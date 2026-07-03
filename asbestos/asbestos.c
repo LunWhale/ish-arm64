@@ -654,29 +654,42 @@ static int cpu_single_step(struct cpu_state *cpu, struct tlb *tlb) {
 // back (INT_PREBUILT_RET) exactly when the callee returns. PC/LR are saved and
 // restored so the spec_fn resumes cleanly.
 uint64_t prebuilt_call(struct cpu_state *cpu, struct tlb *tlb, addr_t target_pc) {
-    addr_t save_pc = cpu->pc;
-    uint64_t save_lr = cpu->regs[30];
+    // The caller (a prebuilt spec_fn) runs on tlb->frame->cpu, driven by the
+    // gadget inside an *outer* cpu_step_to_interrupt. We must run the callee
+    // WITHOUT disturbing that outer frame: cpu_step_to_interrupt copies the
+    // passed cpu into tlb->frame->cpu and mutates frame->last_block / ret_cache
+    // / block_cache_gen as it runs. Reusing the same frame corrupts the outer
+    // spec_fn's execution context (observed: PyUnicode_New re-enters itself
+    // forever after calling PyMem_RawMalloc). So we swap in a private frame for
+    // the duration of the nested call and restore the outer one afterwards.
+    struct fiber_frame *outer_frame = tlb->frame;
+    tlb->frame = NULL;                   // force a fresh frame to be allocated
 
-    cpu->regs[30] = PREBUILT_SENTINEL;   // callee returns here
-    cpu->pc = target_pc;
+    struct cpu_state nested = *cpu;      // callee runs on its own cpu copy
+    nested.pc = target_pc;
+    nested.regs[30] = PREBUILT_SENTINEL; // callee returns here
 
-    // Drive the callee to its return. Loop past any other interrupts (timer,
-    // syscall) by re-entering — those are handled by the outer kernel loop
-    // normally, but here we own the nested call and only stop at our sentinel.
     for (;;) {
-        int interrupt = cpu_step_to_interrupt(cpu, tlb);
+        int interrupt = cpu_step_to_interrupt(&nested, tlb);
         if (interrupt == INT_PREBUILT_RET)
             break;
         // A syscall/timer/etc. fired inside the callee. Service it the same way
         // the kernel's run loop would, then continue the nested call.
         extern void handle_interrupt(int interrupt);
-        cpu->trapno = interrupt;
+        nested.trapno = interrupt;
         handle_interrupt(interrupt);
     }
 
-    uint64_t ret = cpu->regs[0];
-    cpu->pc = save_pc;
-    cpu->regs[30] = save_lr;
+    // Copy back the callee's observable effects (result reg + any caller-saved
+    // state the ABI lets a callee clobber). The outer cpu keeps its own pc/lr.
+    uint64_t ret = nested.regs[0];
+    for (int i = 0; i < 18; i++) cpu->regs[i] = nested.regs[i];  // x0..x17 caller-saved
+    cpu->sp = nested.sp;
+
+    // Free the nested frame and restore the outer one.
+    if (tlb->frame != NULL && tlb->frame != outer_frame)
+        free(tlb->frame);
+    tlb->frame = outer_frame;
     return ret;
 }
 #endif

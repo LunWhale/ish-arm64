@@ -96,10 +96,19 @@ SPEC="$OUT/spec_$FN.c"
   echo '#define FLAG_HS (g_fa >= g_fb)'
   echo '#define FLAG_LS (g_fa <= g_fb)'
   echo '#define SP (cpu->sp)                               /* stack pointer */'
-  echo '/* Memory ops go through the guest TLB (fork/CoW safe). 64-bit + byte. */'
-  echo '#define PB_LDR(dst, addr) do { uint64_t _v=0; tlb_read(tlb,(addr),&_v,8); (dst)=_v; } while(0)'
-  echo '#define PB_STR(addr, val) do { uint64_t _v=(val); tlb_write(tlb,(addr),&_v,8); } while(0)'
-  echo '#define PB_LDRB(dst, addr) do { uint8_t _b=0; tlb_read(tlb,(addr),&_b,1); (dst)=_b; } while(0)'
+  echo "/* PB_BASE: library load base = runtime addr ($ADDR) - file offset (0x$OFF)."
+  echo " * adrp/adr targets (file-absolute in the disassembly) resolve to"
+  echo " * PB_BASE + target at runtime. No-ASLR makes this constant. */"
+  echo "#define PB_BASE 0x$(printf '%x' $(( ADDR - 0x$OFF )))ULL"
+  echo '/* Memory ops go through the guest TLB (fork/CoW safe). 64/32-bit + byte. */'
+  echo '#define PB_LDR(dst, addr)  do { uint64_t _v=0; tlb_read (tlb,(addr),&_v,8); (dst)=_v; } while(0)'
+  echo '#define PB_STR(addr, val)  do { uint64_t _v=(val); tlb_write(tlb,(addr),&_v,8); } while(0)'
+  echo '#define PB_LDRW(dst, addr) do { uint32_t _v=0; tlb_read (tlb,(addr),&_v,4); (dst)=_v; } while(0)'
+  echo '#define PB_STRW(addr, val) do { uint32_t _v=(uint32_t)(val); tlb_write(tlb,(addr),&_v,4); } while(0)'
+  echo '#define PB_LDRB(dst, addr) do { uint8_t  _b=0; tlb_read (tlb,(addr),&_b,1); (dst)=_b; } while(0)'
+  echo '#define PB_STRB(addr, val) do { uint8_t  _b=(uint8_t)(val); tlb_write(tlb,(addr),&_b,1); } while(0)'
+  echo '#define PB_LDRH(dst, addr) do { uint16_t _h=0; tlb_read (tlb,(addr),&_h,2); (dst)=_h; } while(0)'
+  echo '#define PB_STRH(addr, val) do { uint16_t _h=(uint16_t)(val); tlb_write(tlb,(addr),&_h,2); } while(0)'
   echo ''
   echo "void spec_$FN(struct cpu_state *cpu, struct tlb *tlb) {"
   echo "    (void)tlb;"
