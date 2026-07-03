@@ -105,6 +105,8 @@ elif guest_arch == 'arm64'
         # binary-level offload in kernel/native_offload.c.
         'kernel/native_offload_sym.c',
         'kernel/native_offload_sym_builtins.c',
+        # Cached-gadget offload: whole-function specialized blocks (ARM64 only).
+        'kernel/native_offload_cached.c',
         gadgets+'/entry.S',
         gadgets+'/memory.S',
         gadgets+'/control.S',

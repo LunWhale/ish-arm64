@@ -30,6 +30,7 @@
 // Gadget declarations
 extern void gadget_interrupt(void);
 extern void gadget_exit(void);
+extern void gadget_cached_entry(void);
 extern void gadget_set_pc(void);
 extern void gadget_trace(void);
 extern void gadget_check_highbits(void);
@@ -930,6 +931,14 @@ void gen_end(struct gen_state *state) {
 void gen_exit(struct gen_state *state) {
     gen(state, (unsigned long) gadget_exit);
     gen(state, state->ip);
+}
+
+// Emit a cached-gadget block: one giant gadget (gadget_cached_entry) that calls
+// the native spec_fn, then resumes at guest LR (emulating the function's ret).
+// Layout matches gadget_cached_entry in control.S: [&gadget_cached_entry][spec_fn].
+void gen_cached_block(struct gen_state *state, void *spec_fn) {
+    gen(state, (unsigned long) gadget_cached_entry);
+    gen(state, (unsigned long) spec_fn);
 }
 
 // Forward declarations

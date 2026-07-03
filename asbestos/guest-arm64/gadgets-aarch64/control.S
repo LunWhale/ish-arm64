@@ -1454,3 +1454,34 @@ make_fused_subs_reg_bcond ge, ge
 make_fused_subs_reg_bcond lt, lt
 make_fused_subs_reg_bcond gt, gt
 make_fused_subs_reg_bcond le, le
+
+/*
+ * gadget_cached_entry — entry point for a "cached gadget" (specialized block).
+ *
+ * A registered guest function's whole block is replaced by ONE giant gadget:
+ * this trampoline, which calls a native C spec_fn(cpu, tlb) that reproduces
+ * the guest function's logic (reading/writing cpu_state regs + guest memory
+ * via the TLB — all state stays in guest semantics), then resumes the guest
+ * at the return address.
+ *
+ * Code stream layout:  [&gadget_cached_entry][spec_fn ptr]
+ * On entry _pc points at the spec_fn ptr slot (gret post-incremented past us).
+ *
+ * The cached gadget covers a whole leaf function (entry .. ret), so it resumes
+ * the guest at the return address = guest LR (x30), i.e. it emulates the ret.
+ * spec_fn must not clobber guest x30 (leaf functions don't).
+ *
+ * Register convention on entry: _cpu=x1, _tlb=x2(+TLB_entries), _pc=x28.
+ * spec_fn is called with C ABI args (cpu, tlb-original-ptr).
+ */
+.gadget cached_entry
+    ldr x19, [_pc]              // x19 = spec_fn ptr
+    save_c                      // preserve host caller-saved regs (x0-x18,lr)
+    mov x0, _cpu                // arg0 = cpu_state*
+    sub x1, _tlb, #TLB_entries  // arg1 = original tlb* (undo the +TLB_entries)
+    blr x19                     // spec_fn(cpu, tlb)
+    restore_c
+    ldr x8, [_cpu, #(CPU_x0 + 30*8)]  // guest x30 (LR) = return address
+    str x8, [_cpu, #CPU_pc]     // guest PC = LR (emulate ret)
+    mvn w0, wzr                 // INT_NONE
+    b fiber_exit                // back to dispatch loop (handles chain/timer)

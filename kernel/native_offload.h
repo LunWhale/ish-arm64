@@ -178,4 +178,40 @@ int native_offload_add_symbol_hinted(const char *binary, const char *symbol,
                                      addr_t addr_hint, nsym_handler_func handler,
                                      void *user);
 
+// ============================================================================
+// Cached-gadget offload (ARM64 guest only)
+// ============================================================================
+//
+// A third offload granularity: replace a whole registered guest FUNCTION's
+// block with a single "cached gadget" — one native function that reproduces
+// the guest function's logic, staying entirely in guest semantics (reads/
+// writes cpu_state regs + guest memory via the TLB). Unlike symbol-level
+// offload (which swaps in a host implementation and hits the host/guest object
+// boundary), a cached gadget is "the same guest logic, translated ahead of
+// time to faster host code" — so it works for any function, including ones
+// that return guest PyObjects. spec_fn is generated offline (hand-written now,
+// clang auto-translation later) and compiled statically into iSH.
+//
+// spec_fn signature: void spec_fn(struct cpu_state *cpu, struct tlb *tlb).
+// It must read args from cpu->regs[], do the work, write results to cpu->regs[]
+// (and guest memory via tlb_read/tlb_write), and leave cpu unchanged otherwise.
+// The trampoline (gadget_cached_entry) resumes the guest at the return address.
+typedef void (*cached_spec_fn)(struct cpu_state *cpu, struct tlb *tlb);
+
+// Register a cached-gadget target: when block compilation reaches guest_addr,
+// emit a single cached gadget calling spec_fn instead of the normal stream.
+int native_offload_add_cached(const char *binary, const char *symbol,
+                              addr_t guest_addr, cached_spec_fn spec_fn);
+
+// Look up a registered cached gadget for a block starting at guest pc.
+// Returns spec_fn (and sets *ret_pc to the guest return address) on hit,
+// or NULL if not registered. Called from fiber_block_compile.
+cached_spec_fn native_offload_cached_lookup(addr_t pc);
+
+// True if any cached gadget is registered (fiber_block_compile fast-skip).
+bool native_offload_cached_active(void);
+
+// Register built-in cached targets. Called once, lazily. No-op unless gated.
+void native_offload_cached_init(void);
+
 #endif
