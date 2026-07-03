@@ -80,6 +80,7 @@ SPEC="$OUT/spec_$FN.c"
   echo '#include <stdint.h>'
   echo '#include "emu/arch/arm64/cpu.h"'
   echo '#include "emu/tlb.h"'
+  echo '#include "kernel/native_offload.h"  /* prebuilt_call for bl/blr sites */'
   echo ''
   echo 'static uint64_t ror64(uint64_t v, unsigned r) { return (v >> r) | (v << (64 - r)); }'
   echo 'static uint64_t g_fa, g_fb;'
@@ -94,6 +95,11 @@ SPEC="$OUT/spec_$FN.c"
   echo '#define FLAG_LO (g_fa <  g_fb)'
   echo '#define FLAG_HS (g_fa >= g_fb)'
   echo '#define FLAG_LS (g_fa <= g_fb)'
+  echo '#define SP (cpu->sp)                               /* stack pointer */'
+  echo '/* Memory ops go through the guest TLB (fork/CoW safe). 64-bit + byte. */'
+  echo '#define PB_LDR(dst, addr) do { uint64_t _v=0; tlb_read(tlb,(addr),&_v,8); (dst)=_v; } while(0)'
+  echo '#define PB_STR(addr, val) do { uint64_t _v=(val); tlb_write(tlb,(addr),&_v,8); } while(0)'
+  echo '#define PB_LDRB(dst, addr) do { uint8_t _b=0; tlb_read(tlb,(addr),&_b,1); (dst)=_b; } while(0)'
   echo ''
   echo "void spec_$FN(struct cpu_state *cpu, struct tlb *tlb) {"
   echo "    (void)tlb;"

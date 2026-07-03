@@ -453,6 +453,16 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
             return INT_GPF;
         }
 #ifdef GUEST_ARM64
+        // --- Mixed execution: return from a nested prebuilt-gadget call ---
+        // A prebuilt spec_fn that hit a guest bl/blr set LR to PREBUILT_SENTINEL
+        // and re-entered the dispatch loop to run the callee. When the callee
+        // returns (guest PC == sentinel), unwind back to prebuilt_call so the
+        // spec_fn can continue from where the call was.
+        if (ip == PREBUILT_SENTINEL) {
+            read_wrunlock(&asbestos->jetsam_lock);
+            *cpu = frame->cpu;
+            return INT_PREBUILT_RET;
+        }
         // --- Pluggable native offload (ARM64 guest only) ---
         // If a native handler is registered for this guest PC, run it instead
         // of compiling/dispatching the guest function. Lossless: when nothing
@@ -635,6 +645,41 @@ static int cpu_single_step(struct cpu_state *cpu, struct tlb *tlb) {
         interrupt = INT_DEBUG;
     return interrupt;
 }
+
+#ifdef GUEST_ARM64
+// Mixed execution: run guest function `target_pc` to completion as threaded-
+// code and return its result (guest x0). Called from a prebuilt spec_fn at a
+// bl/blr site. The callee runs through the normal dispatch loop; we point its
+// return address at PREBUILT_SENTINEL so cpu_step_to_interrupt hands control
+// back (INT_PREBUILT_RET) exactly when the callee returns. PC/LR are saved and
+// restored so the spec_fn resumes cleanly.
+uint64_t prebuilt_call(struct cpu_state *cpu, struct tlb *tlb, addr_t target_pc) {
+    addr_t save_pc = cpu->pc;
+    uint64_t save_lr = cpu->regs[30];
+
+    cpu->regs[30] = PREBUILT_SENTINEL;   // callee returns here
+    cpu->pc = target_pc;
+
+    // Drive the callee to its return. Loop past any other interrupts (timer,
+    // syscall) by re-entering — those are handled by the outer kernel loop
+    // normally, but here we own the nested call and only stop at our sentinel.
+    for (;;) {
+        int interrupt = cpu_step_to_interrupt(cpu, tlb);
+        if (interrupt == INT_PREBUILT_RET)
+            break;
+        // A syscall/timer/etc. fired inside the callee. Service it the same way
+        // the kernel's run loop would, then continue the nested call.
+        extern void handle_interrupt(int interrupt);
+        cpu->trapno = interrupt;
+        handle_interrupt(interrupt);
+    }
+
+    uint64_t ret = cpu->regs[0];
+    cpu->pc = save_pc;
+    cpu->regs[30] = save_lr;
+    return ret;
+}
+#endif
 
 int cpu_run_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
     ish_thread_marker = 1;

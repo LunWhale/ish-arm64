@@ -42,18 +42,19 @@ def translate(lines):
         if bm and (op.startswith('b') or op=='cbz' or op=='cbnz' or op=='tbz' or op=='tbnz'):
             labels[int(bm.group(1),16)] = f"L_{bm.group(1)}"
 
-    for addr, op, args in insns:
+    for i, (addr, op, args) in enumerate(insns):
         if addr in labels:
             body.append(f"{labels[addr]}:")
         a = [x.strip() for x in args.split(',')] if args else []
-        c = emit(addr, op, a, labels)
+        next_pc = insns[i+1][0] if i+1 < len(insns) else addr+4  # for bl return addr
+        c = emit(addr, op, a, labels, next_pc)
         if c is None:
             sys.stderr.write(f"UNSUPPORTED @ {addr:#x}: {op} {args}\n")
             return None
         body.append("    " + c if not c.endswith(":") else c)
     return body
 
-def emit(addr, op, a, labels):
+def emit(addr, op, a, labels, next_pc=None):
     """一条指令 → C 语句 (或 None=不支持)"""
     # 立即数
     def imm(s):
@@ -77,13 +78,20 @@ def emit(addr, op, a, labels):
         shm = re.search(r'#(\d+)', a[2]) if len(a)>2 else None
         if shm: sh = int(shm.group(1))
         return f"{R(a[0])} = ({R(a[0])} & ~(0xffffULL << {sh})) | ((0x{val:x}ULL & 0xffff) << {sh});"
-    # ── 算术 ──
-    if op in ('add','sub','eor','orr','and','mul') and len(a)==3:
+    # ── 算术 (含带移位的寄存器操作数: eor x0,x0,x0,lsr #31) ──
+    if op in ('add','sub','eor','orr','and','mul') and len(a) in (3,4):
         cop = {'add':'+','sub':'-','eor':'^','orr':'|','and':'&','mul':'*'}[op]
         if a[2].startswith('#'):
             rhs = f"{imm(a[2])}ULL"
         else:
             rhs = R(a[2])
+        if len(a) == 4:                       # shifted register operand
+            sm = re.match(r'(lsl|lsr|asr)\s*#(\d+)', a[3])
+            if not sm: return None
+            sop, sh = sm.group(1), int(sm.group(2))
+            if sop == 'lsl': rhs = f"({rhs} << {sh})"
+            elif sop == 'lsr': rhs = f"({rhs} >> {sh})"
+            else: rhs = f"((uint64_t)((int64_t){rhs} >> {sh}))"
         res = f"{R(a[1])} {cop} {rhs}"
         if is_w(a[0]): res = w32(res)
         return f"{R(a[0])} = {res};"
@@ -118,7 +126,35 @@ def emit(addr, op, a, labels):
         m = re.match(r'\[(\w+),\s*(\w+)\]', args_join(a[1:]))
         if m:
             base, idx = R(m.group(1)), R(m.group(2))
-            return f"{R(a[0])} = tlb_read8(tlb, {base} + {idx});"
+            return f"PB_LDRB({R(a[0])}, {base} + {idx});"
+    # ── ldr/str Xt, [Xn, #imm]   (64-bit load/store via TLB; pre/post-index) ──
+    #    Also handles the stack-frame stp/ldp below. mem is the guest address
+    #    space; sp lives in cpu->sp (index 32 → "SP").
+    if op in ('ldr','str') and len(a) >= 2:
+        r = _memop(a[1:])
+        if r:
+            base, off, wb_pre, wb_post = r
+            code = ""
+            if wb_pre: code += f"{base} += {off}; "
+            ea = base if (wb_pre or wb_post) else f"({base} + {off})"
+            if op == 'ldr': code += f"PB_LDR({R(a[0])}, {ea});"
+            else:           code += f"PB_STR({ea}, {R(a[0])});"
+            if wb_post: code += f" {base} += {off};"
+            return code
+    # ── stp/ldp Xt1, Xt2, [Xn, #imm]  (pair load/store; pre/post-index) ──
+    if op in ('stp','ldp') and len(a) >= 3:
+        r = _memop(a[2:])
+        if r:
+            base, off, wb_pre, wb_post = r
+            code = ""
+            if wb_pre: code += f"{base} += {off}; "
+            ea = base if (wb_pre or wb_post) else f"({base} + {off})"
+            if op == 'ldp':
+                code += f"PB_LDR({R(a[0])}, {ea}); PB_LDR({R(a[1])}, {ea} + 8);"
+            else:
+                code += f"PB_STR({ea}, {R(a[0])}); PB_STR({ea} + 8, {R(a[1])});"
+            if wb_post: code += f" {base} += {off};"
+            return code
     # ── cmp (设 flag). Store both signed+unsigned operands so all conditions
     #    resolve correctly. w-regs zero-extend (unsigned 32-bit compare). ──
     if op == 'cmp' and len(a) >= 2:
@@ -153,6 +189,19 @@ def emit(addr, op, a, labels):
     if op == 'b':
         tgt = re.search(r'([0-9a-f]+)\s+<', args_join(a))
         if tgt: return f"goto L_{tgt.group(1)};"
+    # ── bl <target>  (direct call → mixed execution) ──
+    #   Set guest LR to the return address, run the callee via prebuilt_call
+    #   (nested dispatch), result lands in cpu->regs[0]. next_pc is the guest
+    #   address after this bl.
+    if op == 'bl':
+        tgt = re.search(r'([0-9a-f]+)\s+<', args_join(a))
+        if tgt and next_pc is not None:
+            return (f"cpu->regs[30] = 0x{next_pc:x}ULL; "
+                    f"prebuilt_call(cpu, tlb, 0x{tgt.group(1)}ULL);")
+    # ── blr xN  (indirect call → mixed execution) ──
+    if op == 'blr' and len(a) == 1 and next_pc is not None:
+        return (f"cpu->regs[30] = 0x{next_pc:x}ULL; "
+                f"prebuilt_call(cpu, tlb, {R(a[0])});")
     # ── ret ──
     if op == 'ret':
         return "return;"
@@ -169,6 +218,25 @@ def emit(addr, op, a, labels):
     return None
 
 def args_join(a): return ', '.join(a)
+
+def _memop(mem_args):
+    """Parse a memory operand from the args after the value register(s).
+    Returns (base_expr, offset_int, writeback_pre, writeback_post) or None.
+    Forms:  [Xn]            [Xn, #imm]       [Xn, #imm]!   (pre-index)
+            [Xn], #imm  (post-index)"""
+    s = args_join(mem_args).strip()
+    # post-index:  [Xn], #imm
+    m = re.match(r'\[(\w+)\],\s*#(-?\w+)', s)
+    if m: return (R(m.group(1)), int(m.group(2), 0), False, True)
+    # pre-index:   [Xn, #imm]!
+    m = re.match(r'\[(\w+),\s*#(-?\w+)\]!', s)
+    if m: return (R(m.group(1)), int(m.group(2), 0), True, False)
+    # offset:      [Xn, #imm]   or   [Xn]
+    m = re.match(r'\[(\w+),\s*#(-?\w+)\]', s)
+    if m: return (R(m.group(1)), int(m.group(2), 0), False, False)
+    m = re.match(r'\[(\w+)\]', s)
+    if m: return (R(m.group(1)), 0, False, False)
+    return None
 
 if __name__ == '__main__':
     lines = open(sys.argv[1]).readlines()

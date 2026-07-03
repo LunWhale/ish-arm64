@@ -214,4 +214,26 @@ bool native_offload_prebuilt_active(void);
 // Register built-in prebuilt targets. Called once, lazily. No-op unless gated.
 void native_offload_prebuilt_init(void);
 
+// --- Mixed execution: nested guest calls from a prebuilt spec_fn ---
+//
+// When a prebuilt spec_fn reaches a guest bl/blr, it can't translate the callee
+// (another function). Instead it calls the callee "the guest way": prebuilt_call
+// sets the guest LR to PREBUILT_SENTINEL, points guest PC at the target, and
+// re-enters the dispatch loop. The callee runs as normal threaded-code; when it
+// returns to the sentinel, the loop hands control back here. The spec_fn then
+// reads the result from cpu->regs[0] and continues. This is "mixed execution":
+// the specialized body runs as straight host code, but each guest call boundary
+// drops back into the interpreter for that one call.
+//
+// PREBUILT_SENTINEL is a canonical non-zero guest address inside the low guard
+// region that real code never executes; the dispatch loop treats reaching it as
+// INT_PREBUILT_RET. Page-aligned, within the 48-bit guest space, high enough not
+// to collide with a real entry point.
+#define PREBUILT_SENTINEL 0x0000fffffffff000ULL
+
+// Run guest function `target_pc` to completion (as threaded-code), preserving
+// and restoring the caller's PC/LR, and return its result (guest x0). Args must
+// already be in cpu->regs. Called from generated spec_fns at bl/blr sites.
+uint64_t prebuilt_call(struct cpu_state *cpu, struct tlb *tlb, addr_t target_pc);
+
 #endif

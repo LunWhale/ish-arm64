@@ -56,6 +56,20 @@ say "  threaded=${B}ms  prebuilt=${T}ms"
 [ "$T" -lt "$B" ] && ok "prebuilt faster ($(python3 -c "print(f'{$B/$T:.2f}x')"))" \
                   || bad "prebuilt not faster (threaded=$B prebuilt=$T)"
 
+# 5. Mixed execution: outer's spec_fn calls inner via prebuilt_call (nested
+#    dispatch). Correctness only — this path exercises the bl/blr boundary.
+say "== mixed execution (callbench: spec_outer bl inner) =="
+docker run --rm --platform linux/arm64 -v "$PWD/$HERE:/t" alpine:latest sh -c \
+  'apk add -q gcc musl-dev >/dev/null 2>&1 && gcc -O1 -static -no-pie -fno-pie -o /t/callbench /t/callbench.c' \
+  && cp "$HERE/callbench" "$ROOTFS/root/callbench" || bad "callbench build failed"
+CB_HIT=$(ISH_OFFLOAD_STATS=1 /tmp/ish_test_prebuilt -r "$ROOTFS" /root/callbench 50000 2>&1 | grep -c 'offload:prebuilt.*outer')
+[ "$CB_HIT" -ge 1 ] && ok "prebuilt hit (outer, mixed execution)" || bad "outer did not hit"
+CB_BASE=$(/tmp/ish_base_prebuilt -r "$ROOTFS" /root/callbench 500000 2>&1 | grep -oE 'acc=[0-9a-f]+')
+CB_TEST=$(/tmp/ish_test_prebuilt -r "$ROOTFS" /root/callbench 500000 2>&1 | grep -oE 'acc=[0-9a-f]+')
+[ -n "$CB_BASE" ] && [ "$CB_BASE" = "$CB_TEST" ] \
+    && ok "mixed-execution bit-identical ($CB_TEST)" \
+    || bad "mixed-execution mismatch: base=$CB_BASE prebuilt=$CB_TEST"
+
 say ""
 say "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]
