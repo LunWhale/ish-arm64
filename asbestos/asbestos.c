@@ -286,14 +286,14 @@ static struct fiber_block *fiber_block_compile(addr_t ip, struct tlb *tlb) {
     TRACE("%d %08x --- compiling:\n", current_pid(), ip);
     gen_start(ip, &state);
 #ifdef GUEST_ARM64
-    // Cached-gadget offload (ARM64 only): if a native spec_fn is registered for
-    // this function entry, emit one cached gadget covering the whole function
+    // Pre-built gadget offload (ARM64 only): if a native spec_fn is registered for
+    // this function entry, emit one prebuilt gadget covering the whole function
     // instead of the normal gadget stream. Lossless: no registration → normal
     // compile. State stays in guest semantics (spec_fn only touches cpu/tlb).
-    if (native_offload_cached_active()) {
-        cached_spec_fn spec = native_offload_cached_lookup(ip);
+    if (native_offload_prebuilt_active()) {
+        prebuilt_fn spec = native_offload_prebuilt_lookup(ip);
         if (spec != NULL) {
-            gen_cached_block(&state, (void *) spec);
+            gen_prebuilt_block(&state, (void *) spec);
             gen_end(&state);
             state.block->used = state.capacity;
             ISH_SIGNPOST_SCOPE_END(jit, "block_compile", _bc_spid);

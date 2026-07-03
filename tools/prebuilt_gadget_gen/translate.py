@@ -60,6 +60,10 @@ def emit(addr, op, a, labels):
         s = s.strip().lstrip('#')
         s = s.split()[0].split('//')[0].strip()  # 去注释
         return int(s, 0)
+    # AArch64 condition codes → C flag macros (defined in the generated spec).
+    COND = {'eq':'FLAG_EQ','ne':'FLAG_NE','gt':'FLAG_GT','le':'FLAG_LE',
+            'ge':'FLAG_GE','lt':'FLAG_LT','hi':'FLAG_HI','lo':'FLAG_LO',
+            'hs':'FLAG_HS','ls':'FLAG_LS','cs':'FLAG_HS','cc':'FLAG_LO'}
     # ── mov / movz / movk ──
     if op == 'mov' and len(a)==2:
         if a[1].startswith('#'):
@@ -87,6 +91,25 @@ def emit(addr, op, a, labels):
     if op == 'ror' and len(a)==3:
         sh = imm(a[2])
         return f"{R(a[0])} = ror64({R(a[1])}, {sh});"
+    # ── lsl / lsr / asr  (register or immediate shift) ──
+    if op in ('lsl','lsr','asr') and len(a)==3:
+        n = R(a[1])
+        amt = f"{imm(a[2])}" if a[2].startswith('#') else f"({R(a[2])} & 63)"
+        if op == 'lsl': res = f"{n} << {amt}"
+        elif op == 'lsr': res = f"{n} >> {amt}"           # logical (unsigned)
+        else: res = f"(uint64_t)((int64_t){n} >> {amt})"  # arithmetic
+        if is_w(a[0]): res = w32(res)
+        return f"{R(a[0])} = {res};"
+    # ── csel wD, wN, wM/wzr, cond  (D = cond ? N : M) ──
+    if op == 'csel' and len(a)==4:
+        cnd = a[3]
+        if cnd not in COND: return None
+        return f"{R(a[0])} = ({COND[cnd]}) ? {R(a[1])} : {R(a[2])};"
+    # ── csinc wD, wN, wM, cond  (D = cond ? N : M+1) ──
+    if op == 'csinc' and len(a)==4:
+        cnd = a[3]
+        if cnd not in COND: return None
+        return f"{R(a[0])} = ({COND[cnd]}) ? {R(a[1])} : ({R(a[2])} + 1);"
     # ── madd rd,rn,rm,ra = rn*rm+ra ──
     if op == 'madd' and len(a)==4:
         return f"{R(a[0])} = {R(a[1])} * {R(a[2])} + {R(a[3])};"
@@ -96,18 +119,29 @@ def emit(addr, op, a, labels):
         if m:
             base, idx = R(m.group(1)), R(m.group(2))
             return f"{R(a[0])} = tlb_read8(tlb, {base} + {idx});"
-    # ── cmp (设 flag) ──
-    if op == 'cmp' and len(a)==2:
-        rhs = f"{imm(a[1])}ULL" if a[1].startswith('#') else R(a[1])
+    # ── cmp (设 flag). Store both signed+unsigned operands so all conditions
+    #    resolve correctly. w-regs zero-extend (unsigned 32-bit compare). ──
+    if op == 'cmp' and len(a) >= 2:
+        # cmp Rn, #imm[, lsl #sh]   or   cmp Rn, Rm
+        if a[1].startswith('#'):
+            v = imm(a[1])
+            if len(a) >= 3:                       # optional  lsl #sh
+                shm = re.search(r'lsl\s*#(\d+)', args_join(a[2:]))
+                if shm: v <<= int(shm.group(1))
+            rhs = f"{v}ULL"
+        else:
+            rhs = R(a[1])
         lhs = R(a[0])
         if is_w(a[0]): lhs, rhs = w32(lhs), w32(rhs)
         return f"FLAG_CMP({lhs}, {rhs});"
-    # ── 条件分支 ──
-    bcond = {'b.gt':'FLAG_GT','b.le':'FLAG_LE','b.ge':'FLAG_GE','b.lt':'FLAG_LT',
-             'b.eq':'FLAG_EQ','b.ne':'FLAG_NE'}
-    if op in bcond:
+    # ── 条件分支 b.<cond> ──
+    if op.startswith('b.') and op[2:] in COND:
         tgt = re.search(r'([0-9a-f]+)\s+<', args_join(a))
-        if tgt: return f"if ({bcond[op]}) goto L_{tgt.group(1)};"
+        if tgt: return f"if ({COND[op[2:]]}) goto L_{tgt.group(1)};"
+    # ── cset wD, <cond> (D = cond ? 1 : 0) ──
+    if op == 'cset' and len(a)==2 and a[1] in COND:
+        return f"{R(a[0])} = ({COND[a[1]]}) ? 1 : 0;"
+    # ── csinc / csel could go here later ──
     if op == 'cbz' and len(a)>=2:
         tgt = re.search(r'([0-9a-f]+)\s+<', args_join(a))
         v = w32(R(a[0])) if is_w(a[0]) else R(a[0])

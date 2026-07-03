@@ -1,29 +1,29 @@
 #!/bin/bash
-# cached_gadget_gen — generate a cached-gadget spec_fn from a guest binary.
+# prebuilt_gadget_gen — generate a prebuilt-gadget spec_fn from a guest binary.
 #
 # Given a guest ARM64 binary in a rootfs and a leaf function name, this:
 #   1. disassembles the function (objdump)
 #   2. resolves its address (nm) and checks PIE-ness
 #   3. auto-translates it to an equivalent C spec_fn (translate.py)
-#   4. emits kernel/offload_tests/cached/spec_<fn>.c + a register entry
+#   4. emits kernel/offload_tests/prebuilt/spec_<fn>.c + a register entry
 #
 # The spec_fn stays entirely in guest semantics (reads/writes cpu_state regs +
 # guest memory via the TLB), so it works for any function, and is compiled into
-# iSH only with -Doffload_test_cached=true.
+# iSH only with -Doffload_test_prebuilt=true.
 #
-# Usage:  tools/cached_gadget_gen/gen.sh <guest-binary> <function> [runtime-addr]
+# Usage:  tools/prebuilt_gadget_gen/gen.sh <guest-binary> <function> [runtime-addr]
 #   <guest-binary>  path to the ELF (e.g. a libpython in the rootfs)
 #   <function>      symbol name (must be a leaf: no bl / unsupported insns)
 #   [runtime-addr]  optional 0x… guest runtime address (default: symbol offset,
 #                   correct for non-PIE; for PIE/shared libs pass the load-base+
 #                   offset you observed in /proc/self/maps).
 #
-# On success writes the spec + prints the exact native_offload_add_cached line
-# to add to kernel/offload_tests/cached/register.c.
+# On success writes the spec + prints the exact native_offload_add_prebuilt line
+# to add to kernel/offload_tests/prebuilt/register.c.
 set -u
 cd "$(dirname "$0")/../.."                       # repo root
-HERE="tools/cached_gadget_gen"
-OUT="kernel/offload_tests/cached"
+HERE="tools/prebuilt_gadget_gen"
+OUT="kernel/offload_tests/prebuilt"
 
 BIN="${1:?usage: gen.sh <guest-binary> <function> [runtime-addr]}"
 FN="${2:?usage: gen.sh <guest-binary> <function> [runtime-addr]}"
@@ -41,10 +41,21 @@ echo "  symbol offset: 0x$OFF   PIE: $PIE   runtime addr: $ADDR"
   echo "  WARNING: binary is PIE — 0x$OFF is a file offset, not a runtime addr;" \
        "pass the observed load-base+offset as the 3rd argument."
 
-# 2. Disassemble the function.
+# 2. Disassemble the whole function. A function can have several return paths,
+#    so stopping at the first `ret` would drop later branch targets. Stripped
+#    libs don't label the *next* function, so we stop at the function boundary
+#    heuristically: the last `ret` whose following instruction is a function
+#    prologue (`sub sp, sp` / `stp x29, x30`). We emit up to (not including)
+#    that prologue. Also stop at an explicit next `<symbol>:` if present.
 ASM="$HERE/$FN.asm"
-objdump -d "$BIN" 2>/dev/null | awk -v f="<$FN>:" \
-  '$0 ~ f {p=1} p{print} p && /\tret$/ {c++} c>=1 && p {exit}' > "$ASM"
+objdump -d "$BIN" 2>/dev/null | awk -v f="<$FN>:" '
+  $0 ~ f {p=1; print; next}
+  !p {next}
+  /^[0-9a-f]+ </ {exit}                 # explicit next symbol → stop
+  # prologue of the following (unlabelled) function → stop before it
+  prev_ret && ($0 ~ /\tsub\tsp, sp,/ || $0 ~ /\tstp\tx29, x30,/) {exit}
+  {print; prev_ret = ($0 ~ /\tret$/)}
+' > "$ASM"
 [ -s "$ASM" ] || { echo "failed to disassemble $FN" >&2; exit 2; }
 
 # 3. Auto-translate. translate.py exits non-zero + prints UNSUPPORTED on any
@@ -62,10 +73,10 @@ fi
 # 4. Emit spec_<fn>.c.
 SPEC="$OUT/spec_$FN.c"
 {
-  echo "/* AUTO-GENERATED cached-gadget spec_fn for guest \`$FN\` — DO NOT EDIT."
+  echo "/* AUTO-GENERATED prebuilt-gadget spec_fn for guest \`$FN\` — DO NOT EDIT."
   echo " * Source: $BIN  addr $ADDR"
-  echo " * Produced by tools/cached_gadget_gen/gen.sh (guest asm -> equivalent C)."
-  echo " * Compiled only with -Doffload_test_cached=true. */"
+  echo " * Produced by tools/prebuilt_gadget_gen/gen.sh (guest asm -> equivalent C)."
+  echo " * Compiled only with -Doffload_test_prebuilt=true. */"
   echo '#include <stdint.h>'
   echo '#include "emu/arch/arm64/cpu.h"'
   echo '#include "emu/tlb.h"'
@@ -73,12 +84,16 @@ SPEC="$OUT/spec_$FN.c"
   echo 'static uint64_t ror64(uint64_t v, unsigned r) { return (v >> r) | (v << (64 - r)); }'
   echo 'static uint64_t g_fa, g_fb;'
   echo '#define FLAG_CMP(x,y) do { g_fa=(x); g_fb=(y); } while(0)'
-  echo '#define FLAG_NE (g_fa != g_fb)'
   echo '#define FLAG_EQ (g_fa == g_fb)'
-  echo '#define FLAG_GT ((int64_t)g_fa >  (int64_t)g_fb)'
+  echo '#define FLAG_NE (g_fa != g_fb)'
+  echo '#define FLAG_GT ((int64_t)g_fa >  (int64_t)g_fb)   /* signed */'
   echo '#define FLAG_LT ((int64_t)g_fa <  (int64_t)g_fb)'
   echo '#define FLAG_GE ((int64_t)g_fa >= (int64_t)g_fb)'
   echo '#define FLAG_LE ((int64_t)g_fa <= (int64_t)g_fb)'
+  echo '#define FLAG_HI (g_fa >  g_fb)                     /* unsigned */'
+  echo '#define FLAG_LO (g_fa <  g_fb)'
+  echo '#define FLAG_HS (g_fa >= g_fb)'
+  echo '#define FLAG_LS (g_fa <= g_fb)'
   echo ''
   echo "void spec_$FN(struct cpu_state *cpu, struct tlb *tlb) {"
   echo "    (void)tlb;"
@@ -92,6 +107,6 @@ BASE=$(basename "$BIN")
 echo ""
 echo "== add to $OUT/register.c =="
 echo "    void spec_$FN(struct cpu_state*, struct tlb*);"
-echo "    native_offload_add_cached(\"$BASE\", \"$FN\", $ADDR, spec_$FN);"
+echo "    native_offload_add_prebuilt(\"$BASE\", \"$FN\", $ADDR, spec_$FN);"
 echo ""
-echo "then: meson configure <build> -Doffload_test_cached=true && ninja -C <build> ish"
+echo "then: meson configure <build> -Doffload_test_prebuilt=true && ninja -C <build> ish"

@@ -1456,7 +1456,7 @@ make_fused_subs_reg_bcond gt, gt
 make_fused_subs_reg_bcond le, le
 
 /*
- * gadget_cached_entry — entry point for a "cached gadget" (specialized block).
+ * gadget_prebuilt_entry — entry point for a "prebuilt gadget" (specialized block).
  *
  * A registered guest function's whole block is replaced by ONE giant gadget:
  * this trampoline, which calls a native C spec_fn(cpu, tlb) that reproduces
@@ -1464,17 +1464,17 @@ make_fused_subs_reg_bcond le, le
  * via the TLB — all state stays in guest semantics), then resumes the guest
  * at the return address.
  *
- * Code stream layout:  [&gadget_cached_entry][spec_fn ptr]
+ * Code stream layout:  [&gadget_prebuilt_entry][spec_fn ptr]
  * On entry _pc points at the spec_fn ptr slot (gret post-incremented past us).
  *
- * The cached gadget covers a whole leaf function (entry .. ret), so it resumes
+ * The prebuilt gadget covers a whole leaf function (entry .. ret), so it resumes
  * the guest at the return address = guest LR (x30), i.e. it emulates the ret.
  * spec_fn must not clobber guest x30 (leaf functions don't).
  *
  * Register convention on entry: _cpu=x1, _tlb=x2(+TLB_entries), _pc=x28.
  * spec_fn is called with C ABI args (cpu, tlb-original-ptr).
  */
-.gadget cached_entry
+.gadget prebuilt_entry
     ldr x19, [_pc]              // x19 = spec_fn ptr
     save_c                      // preserve host caller-saved regs (x0-x18,lr)
     mov x0, _cpu                // arg0 = cpu_state*

@@ -26,10 +26,10 @@ void gen_end(struct gen_state *state);
 
 int gen_step(struct gen_state *state, struct tlb *tlb);
 
-// Emit a single "cached gadget" for a whole registered function: replaces the
-// normal gadget stream with [gadget_cached_entry][spec_fn]. spec_fn is a native
+// Emit a single "prebuilt gadget" for a whole registered function: replaces the
+// normal gadget stream with [gadget_prebuilt_entry][spec_fn]. spec_fn is a native
 // void(*)(cpu, tlb) that reproduces the guest function; the block resumes at
-// guest LR (ret). See kernel/native_offload_cached.
-void gen_cached_block(struct gen_state *state, void *spec_fn);
+// guest LR (ret). See kernel/native_offload_prebuilt.
+void gen_prebuilt_block(struct gen_state *state, void *spec_fn);
 
 #endif

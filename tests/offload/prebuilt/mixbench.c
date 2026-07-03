@@ -1,6 +1,6 @@
-/* Guest test program for the cached-gadget offload test.
+/* Guest test program for the prebuilt-gadget offload test.
  * `mix` is a pure-compute leaf function; the offline translator produces
- * kernel/offload_tests/cached/spec_mix.c from its disassembly. Built non-PIE
+ * kernel/offload_tests/prebuilt/spec_mix.c from its disassembly. Built non-PIE
  * so `mix` sits at a fixed address (0x400314) the test registers.
  * Rebuild:  see run.sh (uses Docker aarch64 gcc -no-pie). */
 #include <stdint.h>

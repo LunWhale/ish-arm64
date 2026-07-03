@@ -105,8 +105,8 @@ elif guest_arch == 'arm64'
         # binary-level offload in kernel/native_offload.c.
         'kernel/native_offload_sym.c',
         'kernel/native_offload_sym_builtins.c',
-        # Cached-gadget offload: whole-function specialized blocks (ARM64 only).
-        'kernel/native_offload_cached.c',
+        # Pre-built gadget offload: whole-function specialized blocks (ARM64 only).
+        'kernel/native_offload_prebuilt.c',
         gadgets+'/entry.S',
         gadgets+'/memory.S',
         gadgets+'/control.S',
@@ -130,10 +130,10 @@ if get_option('offload_test_symbol') and guest_arch == 'arm64'
         ['kernel/offload_tests/symbol/register.c'],
         include_directories: includes)
 endif
-if get_option('offload_test_cached') and guest_arch == 'arm64'
-    offload_test_libs += static_library('offload_test_cached',
-        ['kernel/offload_tests/cached/register.c',
-         'kernel/offload_tests/cached/spec_mix.c'],
+if get_option('offload_test_prebuilt') and guest_arch == 'arm64'
+    offload_test_libs += static_library('offload_test_prebuilt',
+        ['kernel/offload_tests/prebuilt/register.c',
+         'kernel/offload_tests/prebuilt/spec_mix.c'],
         include_directories: includes)
 endif
 

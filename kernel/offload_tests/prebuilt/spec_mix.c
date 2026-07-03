@@ -1,7 +1,7 @@
-/* AUTO-GENERATED cached-gadget spec_fn for guest `mix` — DO NOT EDIT.
- * Source: tests/offload/cached/mixbench  addr 0x0000000000400314
- * Produced by tools/cached_gadget_gen/gen.sh (guest asm -> equivalent C).
- * Compiled only with -Doffload_test_cached=true. */
+/* AUTO-GENERATED prebuilt-gadget spec_fn for guest `mix` — DO NOT EDIT.
+ * Source: tests/offload/prebuilt/mixbench  addr 0x0000000000400314
+ * Produced by tools/prebuilt_gadget_gen/gen.sh (guest asm -> equivalent C).
+ * Compiled only with -Doffload_test_prebuilt=true. */
 #include <stdint.h>
 #include "emu/arch/arm64/cpu.h"
 #include "emu/tlb.h"
