@@ -6,6 +6,11 @@
 """
 import re, sys
 
+_ic_counter = [0]
+def _next_ic_id():
+    _ic_counter[0] += 1
+    return _ic_counter[0]
+
 def reg(r):
     """x0/w0 → regs index; wzr/xzr → -1 (零寄存器)"""
     r = r.strip().rstrip(',')
@@ -27,6 +32,7 @@ def w32(expr):  # 截断到32位
     return f"((uint32_t)({expr}))"
 
 def translate(lines):
+    _ic_counter[0] = 0
     out = []
     labels = {}   # addr → C label (only for IN-FUNCTION targets)
     body = []
@@ -128,11 +134,12 @@ def emit(addr, op, a, labels, next_pc=None):
         else:
             rhs = R(a[2])
         if len(a) == 4:                       # shifted register operand
-            sm = re.match(r'(lsl|lsr|asr)\s*#(\d+)', a[3])
+            sm = re.match(r'(lsl|lsr|asr|ror)\s*#(\d+)', a[3])
             if not sm: return None
             sop, sh = sm.group(1), int(sm.group(2))
             if sop == 'lsl': rhs = f"({rhs} << {sh})"
             elif sop == 'lsr': rhs = f"({rhs} >> {sh})"
+            elif sop == 'ror': rhs = f"ror64({rhs}, {sh})"
             else: rhs = f"((uint64_t)((int64_t){rhs} >> {sh}))"
         if cop == '&~': expr = f"{R(a[1])} & ~({rhs})"
         elif cop == '^~': expr = f"{R(a[1])} ^ ~({rhs})"
@@ -321,23 +328,23 @@ def emit(addr, op, a, labels, next_pc=None):
     if op == 'b':
         tgt = re.search(r'([0-9a-f]+)\s+<', args_join(a))
         if tgt: return branch_to(tgt.group(1)) + ";"
-    # ── bl <target>  (direct call → mixed execution) ──
-    #   Set guest LR to the return address, run the callee via prebuilt_call
-    #   (nested dispatch), result lands in cpu->regs[0]. next_pc is the guest
-    #   address after this bl.
+    # ── bl <target>  (direct call). PB_CALL does inline-cache dispatch: if the
+    #   callee has a translated spec_fn, call it directly (stays in host code,
+    #   no interpreter round-trip); otherwise fall back to prebuilt_call (nested
+    #   dispatch). Each call site gets its own static IC slot (unique id). ──
     if op == 'bl':
         tgt = re.search(r'([0-9a-f]+)\s+<', args_join(a))
         if tgt and next_pc is not None:
-            # target and return address are file-absolute in the disassembly;
-            # at runtime they're PB_BASE + that value.
+            ic = _next_ic_id()
             return (f"cpu->regs[30] = PB_BASE + 0x{next_pc:x}ULL; "
-                    f"prebuilt_call(cpu, tlb, PB_BASE + 0x{tgt.group(1)}ULL);")
-    # ── blr xN  (indirect call → mixed execution). Target is a runtime value
-    #    already (loaded from memory / computed), so no PB_BASE. Return address
-    #    is file-absolute → PB_BASE. ──
+                    f"PB_CALL({ic}, cpu, tlb, PB_BASE + 0x{tgt.group(1)}ULL);")
+    # ── blr xN  (indirect call). Target is a runtime register value. Inline
+    #    cache is most valuable here: the target is usually monomorphic (e.g. a
+    #    fixed allocator hook), so the IC hits ~always and skips the interpreter. ──
     if op == 'blr' and len(a) == 1 and next_pc is not None:
+        ic = _next_ic_id()
         return (f"cpu->regs[30] = PB_BASE + 0x{next_pc:x}ULL; "
-                f"prebuilt_call(cpu, tlb, {R(a[0])});")
+                f"PB_CALL({ic}, cpu, tlb, {R(a[0])});")
     # ── br xN  (indirect branch = tail call; does not return here) ──
     #   Set guest PC to the target and return from the spec_fn; the dispatch
     #   loop continues at the target (gadget_prebuilt_entry will NOT overwrite

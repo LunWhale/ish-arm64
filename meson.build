@@ -134,7 +134,8 @@ if get_option('offload_test_prebuilt') and guest_arch == 'arm64'
     offload_test_libs += static_library('offload_test_prebuilt',
         ['kernel/offload_tests/prebuilt/register.c',
          'kernel/offload_tests/prebuilt/spec_mix.c',
-         'kernel/offload_tests/prebuilt/spec_outer.c'],
+         'kernel/offload_tests/prebuilt/spec_outer.c',
+         'kernel/offload_tests/prebuilt/spec_inner.c'],
         include_directories: includes)
 endif
 

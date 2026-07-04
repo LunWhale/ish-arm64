@@ -1,5 +1,5 @@
-/* AUTO-GENERATED prebuilt-gadget spec_fn for guest `outer` — DO NOT EDIT.
- * Source: /tmp/cb  addr 0x0000000000400338
+/* AUTO-GENERATED prebuilt-gadget spec_fn for guest `inner` — DO NOT EDIT.
+ * Source: /tmp/cb  addr 0x000000000040031c
  * Produced by tools/prebuilt_gadget_gen/gen.sh (guest asm -> equivalent C).
  * Compiled only with -Doffload_test_prebuilt=true. */
 #include <stdint.h>
@@ -21,7 +21,7 @@ static uint64_t g_fa, g_fb;
 #define FLAG_HS (g_fa >= g_fb)
 #define FLAG_LS (g_fa <= g_fb)
 #define SP (cpu->sp)                               /* stack pointer */
-/* PB_BASE: library load base = runtime addr (0x0000000000400338) - file offset (0x0000000000400338).
+/* PB_BASE: library load base = runtime addr (0x000000000040031c) - file offset (0x000000000040031c).
  * adrp/adr targets (file-absolute in the disassembly) resolve to
  * PB_BASE + target at runtime. No-ASLR makes this constant. */
 #define PB_BASE 0x0ULL
@@ -47,24 +47,13 @@ static uint64_t g_fa, g_fb;
            else { prebuilt_call(cpu, tlb, _t); } }            \
   } while(0)
 
-void spec_outer(struct cpu_state *cpu, struct tlb *tlb) {
+void spec_inner(struct cpu_state *cpu, struct tlb *tlb) {
     (void)tlb;
-    if ((cpu->regs[1])==0) goto L_400374;
-    SP += -32; PB_STR(SP, cpu->regs[29]); PB_STR(SP + 8, cpu->regs[30]);
-    cpu->regs[29] = SP;
-    PB_STR((SP + 16), cpu->regs[19]); PB_STR((SP + 16) + 8, cpu->regs[20]);
-    cpu->regs[20] = cpu->regs[1];
-    cpu->regs[19] = 0ULL;
-L_400350:
-    cpu->regs[0] = cpu->regs[0] ^ cpu->regs[19];
-    cpu->regs[30] = PB_BASE + 0x400358ULL; PB_CALL(1, cpu, tlb, PB_BASE + 0x40031cULL);
-    cpu->regs[0] = cpu->regs[0] ^ (cpu->regs[0] >> 31);
-    cpu->regs[19] = cpu->regs[19] + 1ULL;
-    FLAG_CMP(cpu->regs[20], cpu->regs[19]);
-    if (FLAG_NE) goto L_400350;
-    PB_LDR(cpu->regs[19], (SP + 16)); PB_LDR(cpu->regs[20], (SP + 16) + 8);
-    PB_LDR(cpu->regs[29], SP); PB_LDR(cpu->regs[30], SP + 8); SP += 32;
-    return;
-L_400374:
+    cpu->regs[2] = 31765ULL;
+    cpu->regs[2] = (cpu->regs[2] & ~(0xffffULL << 16)) | ((0x7f4aULL & 0xffff) << 16);
+    cpu->regs[2] = (cpu->regs[2] & ~(0xffffULL << 32)) | ((0x79b9ULL & 0xffff) << 32);
+    cpu->regs[2] = (cpu->regs[2] & ~(0xffffULL << 48)) | ((0x9e37ULL & 0xffff) << 48);
+    cpu->regs[1] = 4660ULL;
+    cpu->regs[0] = cpu->regs[0] * cpu->regs[2] + cpu->regs[1];
     return;
 }

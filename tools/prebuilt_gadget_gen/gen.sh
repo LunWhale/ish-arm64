@@ -109,6 +109,18 @@ SPEC="$OUT/spec_$FN.c"
   echo '#define PB_STRB(addr, val) do { uint8_t  _b=(uint8_t)(val); tlb_write(tlb,(addr),&_b,1); } while(0)'
   echo '#define PB_LDRH(dst, addr) do { uint16_t _h=0; tlb_read (tlb,(addr),&_h,2); (dst)=_h; } while(0)'
   echo '#define PB_STRH(addr, val) do { uint16_t _h=(uint16_t)(val); tlb_write(tlb,(addr),&_h,2); } while(0)'
+  echo '/* Inline-cache call: if the callee (guest addr `tgt`) has a translated'
+  echo ' * spec_fn, call it directly (stays in host code, no interpreter round-'
+  echo ' * trip); otherwise fall back to prebuilt_call (nested dispatch). Each'
+  echo ' * call site has its own static IC slot keyed by the last target. */'
+  echo '#define PB_CALL(id, cpu, tlb, tgt) do {                       \'
+  echo '    static addr_t _ic_tgt##id = 0; static prebuilt_fn _ic_fn##id = 0; \'
+  echo '    addr_t _t = (tgt);                                        \'
+  echo '    if (_t == _ic_tgt##id && _ic_fn##id) { _ic_fn##id(cpu, tlb); } \'
+  echo '    else { prebuilt_fn _f = native_offload_prebuilt_lookup(_t);\'
+  echo '           if (_f) { _ic_tgt##id = _t; _ic_fn##id = _f; _f(cpu, tlb); } \'
+  echo '           else { prebuilt_call(cpu, tlb, _t); } }            \'
+  echo '  } while(0)'
   echo ''
   echo "void spec_$FN(struct cpu_state *cpu, struct tlb *tlb) {"
   echo "    (void)tlb;"

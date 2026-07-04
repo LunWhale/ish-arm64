@@ -11,11 +11,16 @@
 /* Auto-translated spec_fns (kernel/offload_tests/prebuilt/spec_*.c). */
 void spec_mix(struct cpu_state *cpu, struct tlb *tlb);
 void spec_outer(struct cpu_state *cpu, struct tlb *tlb);
+void spec_inner(struct cpu_state *cpu, struct tlb *tlb);
 
 __attribute__((constructor))
 static void offload_test_prebuilt_register(void) {
     /* tests/offload/prebuilt/mixbench.c, non-PIE, mix @ 0x400314 */
     native_offload_add_prebuilt("mixbench", "mix", 0x400314, spec_mix);
-    /* callbench.c, non-PIE, outer @ 0x400330 — mixed execution (bl inner) */
+    /* callbench.c, non-PIE: outer @ 0x400338 calls inner @ 0x40031c.
+     * Registering BOTH lets outer's blr hit inner's spec via inline cache
+     * (native_offload_prebuilt_lookup), instead of round-tripping the
+     * interpreter. This is the inline-cache path. */
     native_offload_add_prebuilt("callbench", "outer", 0x400338, spec_outer);
+    native_offload_add_prebuilt("callbench", "inner", 0x40031c, spec_inner);
 }
