@@ -21,7 +21,7 @@
 #include "emu/tlb.h"
 #include "emu/arch/arm64/cpu.h"
 
-#define PREBUILT_MAX 32
+#define PREBUILT_MAX 4096
 
 struct prebuilt_target {
     const char *binary;
