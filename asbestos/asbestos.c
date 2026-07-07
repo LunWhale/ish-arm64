@@ -407,7 +407,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
         // tagged address (which reads unmapped memory forever).
         if (ip & 0xffff000000000000ULL) {
             read_wrunlock(&asbestos->jetsam_lock);
-            *cpu = frame->cpu;
+            { bool live_poked = cpu->_poked; *cpu = frame->cpu; cpu->_poked = live_poked; }
             cpu->segfault_addr = ip;
             cpu->segfault_was_write = 0;
             cpu->pc = ip & 0xffffffffffffULL;
@@ -425,7 +425,7 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
             // Release asbestos jetsam_lock held by cpu_step_to_interrupt
             // before calling do_exit_group (which may synchronously reap).
             read_wrunlock(&asbestos->jetsam_lock);
-            *cpu = frame->cpu;
+            { bool live_poked = cpu->_poked; *cpu = frame->cpu; cpu->_poked = live_poked; }
             // Fall through to cpu_run_to_interrupt — return INT_GPF with
             // a canonical write=0 so handle_interrupt delivers SIGSEGV.
             cpu->segfault_addr = 0;
@@ -561,7 +561,12 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
                 atomic_fetch_add_explicit(&pc_hist[pc >> PC_HIST_SHIFT], weight, memory_order_relaxed);
         }
     }
-    *cpu = frame->cpu;
+    // _poked is owned by the poked_ptr channel (cpu_poke / the exchange above),
+    // never by struct copy. Copying frame->cpu._poked back would resurrect a
+    // stale 'true' snapshot taken at loop entry: the exchange cleared the live
+    // byte and returned INT_TIMER, then the copy-back re-arms it, making every
+    // block dispatch interrupt forever (and fork inherits the storm).
+    { bool live_poked = cpu->_poked; *cpu = frame->cpu; cpu->_poked = live_poked; }
 
     // Release jetsam_lock read. Jetsam cleanup can now proceed.
     read_wrunlock(&asbestos->jetsam_lock);
