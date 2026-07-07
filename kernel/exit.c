@@ -88,6 +88,9 @@ noreturn void do_exit(int status) {
     if (current->mm != NULL) {
         mm_release(current->mm);
         current->mm = NULL;
+        // [T-ish-mm-leak-refcount-handoff] We just released it, so the pthread
+        // cleanup handler must NOT release again.
+        current->mm_release_deferred = false;
     }
     if (current->files != NULL) {
         fdtable_release(current->files);
@@ -315,22 +318,23 @@ noreturn void do_exit_group(int status) {
                         sighand_release(task->sighand);
                         task->sighand = NULL;
                     }
-                    // [T-ish-mem-uaf-user-write] DO NOT mm_release() a stuck
-                    // thread's mm here. This thread is, by definition, still
-                    // running inside an uninterruptible host syscall (e.g. a
-                    // sys_read → user_write blocked on a pipe), and may be about
-                    // to dereference task->mem to copy data back to guest memory.
-                    // Freeing the mm out from under it — as the old code did —
-                    // is a use-after-free: the thread then read_wrlock()s a
-                    // destroyed lock and crashes (EXC_BAD_ACCESS at 0x38 =
-                    // offsetof(struct mem, lock)). Leaving task->mm/task->mem
-                    // intact keeps that access valid; if the thread ever
-                    // unblocks it runs its own do_exit(), which mm_release()s
-                    // correctly. The cost is a leaked mm for a thread that never
-                    // returns — the same "accept the leak, not heap corruption"
-                    // tradeoff this whole safety valve already makes for the
-                    // thread itself. Only the fd table is released so blocked
-                    // pipe readers get EOF (mm_release does not affect that).
+                    // [T-ish-mem-uaf-user-write / T-ish-mm-leak-refcount-handoff]
+                    // DO NOT mm_release() a stuck thread's mm HERE. This thread
+                    // is, by definition, still running inside an uninterruptible
+                    // host syscall (e.g. sys_read → user_write blocked on a
+                    // pipe) and may still hold mem->lock and be about to
+                    // dereference task->mem. Freeing the mm now is a
+                    // use-after-free (EXC_BAD_ACCESS at 0x38 = offsetof(struct
+                    // mem, lock)). So keep task->mm/task->mem intact for now, but
+                    // DEFER the release to this thread's own pthread cleanup
+                    // handler (task_run_current), which runs only after the
+                    // thread has left the read_wrlock critical section — so it
+                    // both avoids the UAF and, unlike the old "accept the leak"
+                    // path, actually reclaims the whole guest address space once
+                    // the host pthread finally terminates. If the thread instead
+                    // unblocks and re-enters do_exit(), that mm_release()s and
+                    // clears the flag, so cleanup won't double-free.
+                    task->mm_release_deferred = true;
                     if (task->files != NULL) {
                         fdtable_release(task->files);
                         task->files = NULL;

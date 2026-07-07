@@ -81,6 +81,15 @@ struct task {
     dword_t exit_code;
     bool zombie;
     bool exiting;
+    // [T-ish-mm-leak-refcount-handoff] Set by the do_exit_group safety valve
+    // when it orphans a thread stuck in an uninterruptible host syscall: the
+    // valve can't mm_release() now (the thread may still hold mem->lock inside
+    // user_write → UAF, see T-ish-mem-uaf-user-write), so it hands the release
+    // off to this thread's own pthread cleanup handler, which runs only after
+    // the thread has left the read_wrlock critical section. Prevents the mm
+    // (whole guest address space) from leaking forever when the thread never
+    // re-enters do_exit(). Cleared once released so it never double-frees.
+    bool mm_release_deferred;
 
     // this structure is allocated on the stack of the parent's clone() call
     struct vfork_info {

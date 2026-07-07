@@ -153,6 +153,20 @@ void task_destroy(struct task *task) {
 
 static void task_run_tlb_cleanup(void *arg) {
     tlb_free((struct tlb *)arg);
+    // [T-ish-mm-leak-refcount-handoff] If the do_exit_group safety valve
+    // orphaned this thread (stuck in an uninterruptible host syscall) it
+    // deferred the mm_release to here — this runs only when the host pthread
+    // actually terminates, i.e. AFTER the thread has left the read_wrlock
+    // critical section, so releasing now can't UAF the mem lock. This reclaims
+    // the whole guest address space instead of leaking it forever. `current`
+    // is a __thread TLS pointer, still valid inside pthread cleanup.
+    struct task *self = current;
+    if (self != NULL && self->mm_release_deferred && self->mm != NULL) {
+        self->mm_release_deferred = false;
+        mm_release(self->mm);
+        self->mm = NULL;
+        self->mem = NULL;
+    }
 }
 
 void task_run_current() {
