@@ -146,6 +146,18 @@ _addr   .req x7    // Changed from x3/x4 to x7 to avoid conflict with guest low 
     cmp x8, x10
     b.ne handle_miss_\id
 
+    // Coherence check: this cached entry's host pointer is only valid while
+    // mmu->changes still equals the generation captured when it was filled.
+    // If another thread remapped the page (CoW/mmap/munmap) mmu->changes has
+    // advanced and data_minus_addr points at the stale host backing — treat
+    // it as a miss and re-translate. Fixes JSC reading a null methodTable /
+    // stale Structure after a concurrent GC/allocator remap.
+    ldr x10, [x9, #TLB_ENTRY_gen]
+    ldr x8, [_tlb, #(-TLB_entries+TLB_mmu)]
+    ldr x8, [x8, #MMU_changes]
+    cmp x10, x8
+    b.ne handle_miss_\id
+
     ldr x10, [x9, #TLB_ENTRY_data_minus_addr]
 
     // NOTE: segfault_addr is NOT stored here for performance.

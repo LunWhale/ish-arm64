@@ -64,31 +64,56 @@ bool __tlb_write_cross_page(struct tlb *tlb, addr_t addr, const char *value, uns
 }
 
 __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
-    char *ptr = mmu_translate(tlb->mmu, TLB_PAGE(addr), type);
-    if (tlb->mmu->changes != tlb->mem_changes) {
-        tlb_flush(tlb);
-        // Re-translate after flush. The ptr we got may be stale if another
-        // thread did mmap/munmap concurrently. When a multi-page data object
-        // is partially unmapped, the old host memory stays readable (refcount
-        // > 0 means no PROT_NONE), so a stale ptr silently reads wrong data.
-        // Re-translating ensures we get a pointer to the CURRENT mapping.
+    // Seqlock-style translate: snapshot mmu->changes BEFORE translating, then
+    // verify it did not advance across the translation. If it did, another
+    // thread remapped a page concurrently and `ptr` may reference the stale
+    // host backing (a partial munmap / CoW leaves the old page readable via
+    // its lingering refcount, so the stale ptr silently reads wrong data).
+    // Loop until we get a ptr and a generation that are mutually consistent,
+    // so the gen we stamp on the entry truly matches the backing it points at.
+    uint64_t gen;
+    char *ptr;
+    // A write miss on a CoW page performs the copy inside mmu_translate, which
+    // itself bumps mmu->changes; the retry then sees a stable generation once
+    // the page is resolved. Bound the loop so a thread continuously remapping
+    // can't livelock us — after the cap we accept the latest consistent-enough
+    // translation (the per-block coherence check will still catch a later
+    // change).
+    for (int attempt = 0; ; attempt++) {
+        gen = __atomic_load_n(&tlb->mmu->changes, __ATOMIC_ACQUIRE);
+        if (gen != tlb->mem_changes)
+            tlb_flush(tlb);
+        tlb->mem_changes = gen;
         ptr = mmu_translate(tlb->mmu, TLB_PAGE(addr), type);
+        // Re-read after translate; if unchanged, ptr is consistent with `gen`.
+        if (__atomic_load_n(&tlb->mmu->changes, __ATOMIC_ACQUIRE) == gen)
+            break;
+        if (attempt >= 8) {
+            // Refresh gen to the post-translate value so the entry we stamp is
+            // at least self-consistent with this last translation.
+            gen = __atomic_load_n(&tlb->mmu->changes, __ATOMIC_ACQUIRE);
+            tlb->mem_changes = gen;
+            break;
+        }
+        // Raced with a concurrent remap — retry with the fresh generation.
     }
     if (ptr == NULL) {
         tlb->segfault_addr = addr;
         return NULL;
     }
 
-    // Snapshot changes BEFORE populating entry. If another thread modifies
-    // the page table between here and the next mem_changes check, the
-    // mismatch will be detected and the TLB will be flushed.
-    tlb->mem_changes = __atomic_load_n(&tlb->mmu->changes, __ATOMIC_ACQUIRE);
-
     tlb->dirty_page = TLB_PAGE(addr);
 
     struct tlb_entry *tlb_ent = &tlb->entries[TLB_INDEX(addr)];
     tlb_ent->page = TLB_PAGE(addr);
     tlb_ent->data_minus_addr = (uintptr_t) ptr - TLB_PAGE(addr);
+#ifdef GUEST_ARM64
+    // Record the coherence generation this host pointer is valid for. A hit on
+    // this entry is only trustworthy while mmu->changes still equals this; if
+    // another thread remapped the page (CoW/mmap/munmap) mmu->changes advances
+    // and the cached data_minus_addr points at the stale host backing.
+    tlb_ent->gen = (uintptr_t) gen;
+#endif
 
     if (type == MEM_WRITE) {
         tlb_ent->page_if_writable = TLB_PAGE(addr);

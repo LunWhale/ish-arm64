@@ -120,9 +120,16 @@ void cpu() {
     OFFSET(FIBER_BLOCK, fiber_block, code);
 
     OFFSET(TLB, tlb, entries);
+    OFFSET(TLB, tlb, mmu);
     OFFSET(TLB, tlb, dirty_page);
     OFFSET(TLB, tlb, segfault_addr);
+    OFFSET(TLB, tlb, block_cache);      // inline indirect-branch target cache
+    OFFSET(TLB, tlb, block_cache_gen);
     OFFSET(TLB_ENTRY, tlb_entry, page);
     OFFSET(TLB_ENTRY, tlb_entry, page_if_writable);
     OFFSET(TLB_ENTRY, tlb_entry, data_minus_addr);
+#ifdef GUEST_ARM64
+    OFFSET(TLB_ENTRY, tlb_entry, gen);
+    OFFSET(MMU, mmu, changes);
+#endif
 }

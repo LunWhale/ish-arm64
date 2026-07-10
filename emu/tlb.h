@@ -10,7 +10,11 @@ struct tlb_entry {
     page_t page_if_writable;
     uintptr_t data_minus_addr;
 #ifdef GUEST_ARM64
-    uintptr_t _pad;  // pad to 32 bytes for efficient JIT indexing (lsl #5)
+    // Coherence generation: snapshot of mmu->changes when this entry was
+    // populated. Used to detect a stale entry whose page was remapped
+    // (CoW/mmap/munmap) by another thread while this thread was mid-block.
+    // Occupies the former 32-byte padding slot (JIT indexes entries by lsl #5).
+    uintptr_t gen;
 #endif
 };
 #define TLB_BITS 13  // 8192 entries
@@ -51,7 +55,14 @@ void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type);
 
 forceinline __no_instrument void *__tlb_read_ptr(struct tlb *tlb, addr_t addr) {
     struct tlb_entry entry = tlb->entries[TLB_INDEX(addr)];
-    if (entry.page == TLB_PAGE(addr)) {
+    if (entry.page == TLB_PAGE(addr)
+#ifdef GUEST_ARM64
+        // Coherence: reject a hit whose page was remapped by another thread
+        // since this entry was cached (CoW/mmap advanced mmu->changes). Falling
+        // through to tlb_handle_miss re-translates to the current backing.
+        && entry.gen == (uintptr_t) __atomic_load_n(&tlb->mmu->changes, __ATOMIC_ACQUIRE)
+#endif
+    ) {
         void *address = (void *) (entry.data_minus_addr + addr);
         return address;
     }
@@ -80,7 +91,11 @@ forceinline __no_instrument void *__tlb_write_ptr(struct tlb *tlb, addr_t addr) 
     }
 #endif
     struct tlb_entry entry = tlb->entries[TLB_INDEX(addr)];
-    if (entry.page_if_writable == TLB_PAGE(addr)) {
+    if (entry.page_if_writable == TLB_PAGE(addr)
+#ifdef GUEST_ARM64
+        && entry.gen == (uintptr_t) __atomic_load_n(&tlb->mmu->changes, __ATOMIC_ACQUIRE)
+#endif
+    ) {
         tlb->dirty_page = TLB_PAGE(addr);
         void *address = (void *) (entry.data_minus_addr + addr);
         return address;
