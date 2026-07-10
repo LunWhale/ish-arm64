@@ -1406,6 +1406,31 @@ atomic_cas_segfault:
     gret
 
 /*
+ * IC IVAU — guest invalidates its instruction cache after modifying code.
+ * The architectural contract is "code at [Xt] changed; refetch it", so we
+ * must drop any translated blocks for that page or the JIT keeps running
+ * the stale pre-patch translation (JSC repatches its JIT code in place).
+ * Code stream: [gadget addr][rt]
+ */
+.gadget ic_ivau
+    ldr x8, [_pc]
+    add _pc, _pc, #8
+    and x9, x8, #0x1f          // rt
+    add x10, _cpu, #CPU_x0
+    cmp x9, #31
+    b.eq 1f
+    ldr x11, [x10, x9, lsl #3]
+    b 2f
+1:  mov x11, #0
+2:
+    save_c
+    sub x0, _tlb, #TLB_entries
+    mov x1, x11                // VA to invalidate
+    bl NAME(c_ic_ivau)
+    restore_c
+    gret
+
+/*
  * Base register update gadget for post/pre-indexed addressing
  * Code stream: [gadget addr][rn | offset<<8]
  * Updates: Rn = Rn + offset

@@ -810,6 +810,7 @@ extern void gadget_atomic_casp(void);
 
 // Memory barrier (DMB ISH) for acquire/release semantics
 extern void gadget_dmb(void);
+extern void gadget_ic_ivau(void);          // IC IVAU: invalidate translated code for a page (SMC)
 
 // Load/store pair gadgets
 extern void gadget_ldp64(void);
@@ -2024,15 +2025,33 @@ static int gen_branch(struct gen_state *state, uint32_t insn) {
             return 1;
         }
 
-        // Cache maintenance instructions (DC, IC) — NOP in emulation
+        // IC IVAU (Invalidate icache by VA to PoU): d50b752x
+        // This is the architectural signal that the guest modified code at
+        // the given address (self-modifying code: JIT repatching, inline
+        // cache updates, lazy stub linking). It must NOT be a NOP: iSH only
+        // invalidates translated blocks on a write-TLB-miss, so a store
+        // through an already-writable TLB entry to a page with compiled
+        // blocks leaves them stale. JSC/bun repatches JIT code in place and
+        // then issues DC CVAU + IC IVAU per cache line; treating IC IVAU as
+        // a NOP left the pre-patch translation running (observed: FTL lazy
+        // slow path compiled twice -> RELEASE_ASSERT(!m_stub) abort, inline
+        // caches returning stale property values).
+        if ((insn & 0xffffffe0) == 0xd50b7520) {  // IC IVAU
+            uint32_t rt = insn & 0x1f;
+            gen(state, (unsigned long) gadget_ic_ivau);
+            gen(state, rt);
+            return 1;
+        }
+
+        // Data-cache maintenance (DC) — NOP in emulation (host memory is
+        // coherent; only the *instruction* side needs retranslation, which
+        // IC IVAU above handles).
         // DC CIVAC (Clean and Invalidate by VA to PoC): d50b7e2x
         // DC CVAU  (Clean by VA to PoU):                d50b7b2x
         // DC CVAC  (Clean by VA to PoC):                d50b7a2x
-        // IC IVAU  (Invalidate by VA to PoU):           d50b752x
         if ((insn & 0xffffffe0) == 0xd50b7e20 ||  // DC CIVAC
             (insn & 0xffffffe0) == 0xd50b7b20 ||  // DC CVAU
-            (insn & 0xffffffe0) == 0xd50b7a20 ||  // DC CVAC
-            (insn & 0xffffffe0) == 0xd50b7520) {  // IC IVAU
+            (insn & 0xffffffe0) == 0xd50b7a20) {  // DC CVAC
             return 1;  // NOP — no cache to maintain
         }
 

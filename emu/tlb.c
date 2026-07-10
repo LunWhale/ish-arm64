@@ -293,6 +293,16 @@ __no_instrument int c_store8(struct tlb *tlb, addr_t addr, uint8_t value) {
     return 0;
 }
 
+// IC IVAU: the guest modified code at `addr` and is invalidating its icache.
+// Drop any translated blocks for that page so the new code gets retranslated.
+// Without this, a store through an already-writable TLB entry (which never
+// takes the mem_ptr write-miss path that calls asbestos_invalidate_page)
+// leaves stale translations running — JSC's in-place JIT repatching breaks.
+__no_instrument void c_ic_ivau(struct tlb *tlb, addr_t addr) {
+    extern void asbestos_invalidate_page(struct asbestos *asbestos, page_t page);
+    asbestos_invalidate_page(tlb->mmu->asbestos, PAGE(addr));
+}
+
 // Atomic memory operations (LSE): LDADD/LDCLR/LDEOR/LDSET/LDSMAX/LDSMIN/LDUMAX/LDUMIN/SWP
 // Return: 0 on success, -1 on segfault or unsupported op
 // Helper macros for atomic RMW with CAS loop (for min/max that lack atomic builtins)
