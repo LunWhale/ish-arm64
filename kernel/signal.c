@@ -465,6 +465,20 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
     // ARM64 only provides __kernel_rt_sigreturn in the VDSO.
     // Always use an rt_sigframe for signal delivery.
     need_siginfo = true;
+
+    // SA_RESTART: if this handler asked for automatic restart and the syscall
+    // we're interrupting returned EINTR, rewind PC to the `svc #0` instruction
+    // (4 bytes back) and restore the original first argument (x0), which the
+    // return value clobbered. The signal frame we save next captures this
+    // rewound PC, so when the handler returns via rt_sigreturn the syscall
+    // re-executes instead of surfacing EINTR. Load-bearing for JSC's SIGPWR
+    // GC-safepoint handshake, which registers SA_RESTART and otherwise
+    // livelocks re-signalling a thread whose futex keeps returning EINTR.
+    if ((action->flags & SA_RESTART_) && current->syscall_restartable) {
+        current->cpu.pc -= 4;
+        current->cpu.regs[0] = current->syscall_restart_arg0;
+        current->syscall_restartable = false;
+    }
 #endif
 
     // setup the frame

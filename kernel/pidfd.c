@@ -71,13 +71,22 @@ static int pidfd_close(struct fd *fd) {
 // Called from the exit path when `pid` has become a zombie: wake any pidfd
 // poller referencing it so a blocked poll()/epoll returns POLLIN.
 void pidfd_notify_exit(pid_t_ pid) {
+    extern char *getenv(const char *);
+    int trace = getenv("ISH_PIDFD_TRACE") ? 1 : 0;
+    int matched = 0, total = 0;
     lock(&pidfd_lock);
     struct fd *fd;
     list_for_each_entry(&pidfd_list, fd, pidfd_links) {
-        if (fd->pidfd.pid == pid)
+        total++;
+        if (fd->pidfd.pid == pid) {
             poll_wakeup(fd, POLL_READ);
+            matched++;
+        }
     }
     unlock(&pidfd_lock);
+    if (trace)
+        fprintf(stderr, "[pidfd] notify_exit(pid=%d): %d/%d pidfds matched+woken\n",
+                pid, matched, total);
 }
 
 static struct fd_ops pidfd_ops = {

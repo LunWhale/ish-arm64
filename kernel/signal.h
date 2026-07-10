@@ -13,6 +13,7 @@ typedef qword_t sigset_t_;
 #define SIG_IGN_ 1
 
 #define SA_SIGINFO_ 4
+#define SA_RESTART_ 0x10000000
 #define SA_NODEFER_ 0x40000000
 #define SA_RESETHAND_ 0x80000000
 

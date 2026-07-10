@@ -79,6 +79,12 @@ void handle_interrupt(int interrupt) {
 #elif defined(GUEST_ARM64)
         // ARM64: syscall number in x8, args in x0-x5, return in x0
         unsigned syscall_num = cpu->regs[8];
+        // Snapshot for SA_RESTART: x0 (first arg) is about to be clobbered by
+        // the return value; save it and the number so an interrupted syscall
+        // can be re-executed if a SA_RESTART signal is delivered.
+        current->syscall_restart_num = syscall_num;
+        current->syscall_restart_arg0 = cpu->regs[0];
+        current->syscall_restartable = false;
 
         // === FAST PATH: Hot syscalls ===
         int fast_result = -1;  // -1 means fast path not taken
@@ -123,10 +129,48 @@ void handle_interrupt(int interrupt) {
                     printk("%d(%s) stub syscall %d\n", current->pid, current->comm, syscall_num);
                 }
                 STRACE("%d call %-3d ", current->pid, syscall_num);
+                // env-gated full syscall trace for golden-diff vs native strace.
+                // ISH_SYSTRACE=1 logs every slow-path syscall with timestamp,
+                // pid, number, the 6 args, and the return value.
+                static int systrace = -1;
+                if (systrace == -1) { const char *e = getenv("ISH_SYSTRACE"); systrace = (e && e[0]=='1') ? 1 : 0; }
+                if (systrace) {
+                    struct timespec _t; clock_gettime(CLOCK_MONOTONIC, &_t);
+                    fprintf(stderr, "[sc] %ld.%06ld pid=%d n=%d(%llx,%llx,%llx,%llx,%llx,%llx)",
+                            (long)_t.tv_sec, _t.tv_nsec/1000, current->pid, syscall_num,
+                            (unsigned long long)cpu->regs[0], (unsigned long long)cpu->regs[1],
+                            (unsigned long long)cpu->regs[2], (unsigned long long)cpu->regs[3],
+                            (unsigned long long)cpu->regs[4], (unsigned long long)cpu->regs[5]);
+                }
                 int64_t result = syscall_table[syscall_num](
                     cpu->regs[0], cpu->regs[1], cpu->regs[2],
                     cpu->regs[3], cpu->regs[4], cpu->regs[5]);
                 STRACE(" = 0x%llx\n", (unsigned long long)result);
+                if (systrace)
+                    fprintf(stderr, " = 0x%llx\n", (unsigned long long)result);
+                // SA_RESTART: mark this syscall restartable if it was
+                // interrupted (EINTR). receive_signals will rewind PC if the
+                // delivered signal's handler has SA_RESTART. Restricted to
+                // syscalls that re-execute correctly by simply re-running with
+                // the same args (futex, poll/epoll, read/write, recv/send,
+                // accept, connect, wait). Timer syscalls (nanosleep,
+                // clock_nanosleep, ppoll/pselect with timeout) must NOT use
+                // naive PC-rewind restart: it would restart the FULL duration
+                // rather than the remaining time, so a `timeout N` wrapper's
+                // sleep would never end. Those keep returning EINTR (userspace
+                // handles their own restart with an adjusted timeout).
+                if ((int32_t)(uint32_t)result == -EINTR) {
+                    switch (syscall_num) {
+                        case 98:  // futex
+                        case 22:  // epoll_pwait
+                        case 63:  // read
+                        case 64:  // write
+                            current->syscall_restartable = true;
+                            break;
+                        default:
+                            current->syscall_restartable = false;
+                    }
+                }
                 // sigreturn/rt_sigreturn restore the full CPU state from the
                 // signal frame. Do NOT touch regs[0] — it was already restored
                 // by restore_sigcontext. Any post-processing could corrupt the

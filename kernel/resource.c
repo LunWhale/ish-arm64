@@ -227,6 +227,7 @@ int_t sys_sched_getaffinity(pid_t_ pid, dword_t cpusetsize, addr_t cpuset_addr) 
     }
 
     unsigned cpus = sysconf(_SC_NPROCESSORS_ONLN);
+    { const char *e = getenv("ISH_FAKE_NCPU"); if (e) { int n = atoi(e); if (n > 0) cpus = n; } }
     char cpuset[cpus / 8 + 1];
     if (cpusetsize < sizeof(cpuset))
         return _EINVAL;

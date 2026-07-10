@@ -77,6 +77,17 @@ struct task {
     addr_t clear_tid;
     addr_t robust_list;
 
+    // SA_RESTART support: on each syscall entry we snapshot the number and the
+    // first arg (x0/ebx), which the return value overwrites. If the syscall is
+    // interrupted (returns EINTR) and a signal with SA_RESTART is then
+    // delivered, receive_signals rewinds PC to the syscall instruction and
+    // restores the original first arg so the syscall re-executes — matching
+    // Linux. Without it, JSC's SIGPWR-based GC safepoint handshake (which
+    // registers SA_RESTART) livelocks on a futex that keeps returning EINTR.
+    unsigned syscall_restart_num;
+    uint64_t syscall_restart_arg0;
+    bool syscall_restartable; // this syscall returned EINTR and may restart
+
     // locked by pids_lock
     dword_t exit_code;
     bool zombie;
