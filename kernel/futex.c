@@ -144,10 +144,10 @@ static int futex_wait(addr_t uaddr, dword_t val, struct timespec *timeout) {
     futex_dbg_set(current->pid, uaddr, val);
     struct futex *futex = futex_get(uaddr);
     if (uaddr == futex_watch_addr()) {
-        dword_t rv = 0xdeadbeef;
-        { dword_t *vp = mem_ptr(current->mem, uaddr, MEM_READ); if (vp) rv = *vp; }
-        fprintf(stderr, "[fw] pid=%d WAIT uaddr=0x%llx expect_val=0x%x actual_mem=0x%x %s\n",
-                current->pid, (unsigned long long)uaddr, val, rv,
+        dword_t rv = 0xdeadbeef; void *hp = NULL;
+        { dword_t *vp = mem_ptr(current->mem, uaddr, MEM_READ); if (vp) { rv = *vp; hp = vp; } }
+        fprintf(stderr, "[fw] pid=%d WAIT uaddr=0x%llx expect_val=0x%x actual_mem=0x%x hostptr=%p %s\n",
+                current->pid, (unsigned long long)uaddr, val, rv, hp,
                 rv != val ? "(MISMATCH→EAGAIN)" : "(match→sleep)");
     }
     int err = 0;
@@ -252,9 +252,13 @@ static int futex_wait(addr_t uaddr, dword_t val, struct timespec *timeout) {
                         addr_t waddr = futex_dbg_get(t->pid);
                         dword_t wv = 0xffffffff;
                         if (waddr) { dword_t *vp = mem_ptr(t->mem, waddr, MEM_READ); if (vp) wv = *vp; }
-                        printk("  thread pid=%d blocking=%d x8=%lld futex_uaddr=0x%llx curval=0x%x\n",
+                        printk("  thread pid=%d blocking=%d x8=%lld futex_uaddr=0x%llx curval=0x%x pc=0x%llx lr=0x%llx x0=0x%llx x1=0x%llx\n",
                                t->pid, t->blocking, (long long)t->cpu.regs[8],
-                               (unsigned long long)waddr, wv);
+                               (unsigned long long)waddr, wv,
+                               (unsigned long long)t->cpu.pc,
+                               (unsigned long long)t->cpu.regs[30],
+                               (unsigned long long)t->cpu.regs[0],
+                               (unsigned long long)t->cpu.regs[1]);
                     }
                     unlock(&pids_lock);
                 }
@@ -338,9 +342,12 @@ static int futex_wakelike(int op, addr_t uaddr, dword_t wake_max, dword_t requeu
     struct futex *futex = futex_get(uaddr);
 
     unsigned woken = futex_wake_queue(futex, wake_max);
-    if (uaddr == futex_watch_addr())
-        fprintf(stderr, "[fw] pid=%d WAKE uaddr=0x%llx max=%d woken=%u\n",
-                current->pid, (unsigned long long)uaddr, wake_max, woken);
+    if (uaddr == futex_watch_addr()) {
+        dword_t mv = 0xdead; void *hp = NULL;
+        { dword_t *vp = mem_ptr(current->mem, uaddr, MEM_READ); if (vp) { mv = *vp; hp = vp; } }
+        fprintf(stderr, "[fw] pid=%d WAKE 0x%llx woken=%u mem_after_wake=0x%x hostptr=%p\n",
+                current->pid, (unsigned long long)uaddr, woken, mv, hp);
+    }
 
     if (op == FUTEX_REQUEUE_) {
         struct futex *futex2 = futex_get_unlocked(requeue_addr);
