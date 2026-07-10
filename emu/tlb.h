@@ -82,11 +82,13 @@ forceinline __no_instrument bool tlb_read(struct tlb *tlb, addr_t addr, void *ou
 // C-level write watchpoint: detect stores that bypass assembly write_prep
 #define ENABLE_C_WRITE_WATCHPOINT 1
 extern volatile addr_t g_watch_page_val;
+extern volatile addr_t g_watch_pages[2];
 void c_watch_write_hit(addr_t addr, const char *caller);
 
 forceinline __no_instrument void *__tlb_write_ptr(struct tlb *tlb, addr_t addr) {
 #ifdef ENABLE_C_WRITE_WATCHPOINT
-    if (g_watch_page_val && (addr & ~0xfffULL) == g_watch_page_val) {
+    if (g_watch_pages[0] && ((addr & ~0xfffULL) == g_watch_pages[0] ||
+                             (addr & ~0xfffULL) == g_watch_pages[1])) {
         c_watch_write_hit(addr, __func__);
     }
 #endif

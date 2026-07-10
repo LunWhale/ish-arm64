@@ -754,6 +754,40 @@ void handle_interrupt(int interrupt) {
                 // return PC at [fp+8]). Print the first frames and a return-PC
                 // histogram so an unbounded recursion shows its cycle.
                 if (getenv("ISH_GPF_BT")) {
+                    // Watchpoint ring: who wrote the watched window (ISH_WATCH_PAGE)
+                    { extern void dump_watch_hits(uint64_t lo, uint64_t hi);
+                      extern volatile uint64_t g_watch_lo, g_watch_hi;
+                      dump_watch_hits(g_watch_lo, g_watch_hi); }
+                    { extern uint64_t g_watch_field_regs[32];
+                      extern volatile int g_watch_field_hit_count;
+                      if (g_watch_field_hit_count) {
+                          printk("  [watch-field] store hit count=%d, regs at first hit:\n", g_watch_field_hit_count);
+                          for (int i = 0; i < 31; i += 4)
+                              printk("    x%d=0x%llx x%d=0x%llx x%d=0x%llx x%d=0x%llx\n",
+                                     i, (unsigned long long)g_watch_field_regs[i],
+                                     i+1, i+1 < 31 ? (unsigned long long)g_watch_field_regs[i+1] : 0,
+                                     i+2, i+2 < 31 ? (unsigned long long)g_watch_field_regs[i+2] : 0,
+                                     i+3, i+3 < 31 ? (unsigned long long)g_watch_field_regs[i+3] : 0);
+                          printk("    pc=0x%llx\n", (unsigned long long)g_watch_field_regs[31]);
+                          // Fresh re-reads of candidate source pointers +0x14
+                          for (int r = 0; r < 31; r++) {
+                              uint64_t p = g_watch_field_regs[r];
+                              if (p >= 0x100000 && p < 0x100000000000ULL) {
+                                  uint32_t v = 0;
+                                  if (!user_get(p + 0x14, v))
+                                      printk("    [x%d+0x14] = 0x%x\n", r, v);
+                              }
+                          }
+                          // The load feeding the corrupted field came from
+                          // [x20 + 0x14]; dump that neighborhood.
+                          { uint64_t base = g_watch_field_regs[20];
+                            for (int off = 0; off < 0x40; off += 4) {
+                                uint32_t v = 0;
+                                if (!user_get(base + off, v))
+                                    printk("    [src 0x%llx+0x%x] = 0x%x\n",
+                                           (unsigned long long)base, off, v);
+                            } }
+                      } }
                     // Fresh re-read of the memory x1 points at (LLInt CodeBlock
                     // candidate): distinguishes "load saw stale TLB data" (fresh
                     // read differs from what the gadget loaded) from "memory
@@ -762,6 +796,27 @@ void handle_interrupt(int interrupt) {
                         uint32_t v = 0;
                         if (!user_get(cpu->regs[1] + off, v))
                             printk("  [x1+0x%x] = 0x%x\n", off, v);
+                    }
+                    // Follow CodeBlock::m_unlinkedCode ([x1+0x38]) and dump the
+                    // UnlinkedCodeBlock the crashing CodeBlock was built from.
+                    {
+                        uint64_t unlinked = 0;
+                        if (!user_get(cpu->regs[1] + 0x38, unlinked) && unlinked) {
+                            printk("  unlinked=[x1+0x38]=0x%llx\n", (unsigned long long)unlinked);
+                            for (int off = 0; off <= 0x40; off += 8) {
+                                uint64_t v = 0;
+                                if (!user_get(unlinked + off, v))
+                                    printk("    [ulk+0x%x] = 0x%llx\n", off, (unsigned long long)v);
+                            }
+                            uint32_t ctr = 0;
+                            if (!user_get(unlinked + 0xa8, ctr))
+                                printk("    [ulk+0xa8](counter) = 0x%x\n", ctr);
+                            struct pt_entry *pe = mem_pt(current->mem, PAGE(unlinked));
+                            if (pe != NULL)
+                                printk("    ulk page flags=0x%x data=%p offset=0x%zx refcnt=%u\n",
+                                       pe->flags, pe->data ? pe->data->data : NULL,
+                                       pe->offset, pe->data ? pe->data->refcount : 0);
+                        }
                     }
                     uint64_t fp = cpu->regs[29];
                     uint64_t pcs[64]; int n = 0;

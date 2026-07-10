@@ -255,10 +255,73 @@ static void microbench_signal_dump(int sig) {
     _exit(0);
 }
 
+// Poller thread for ISH_POLL_ADDR (see main): logs value transitions of a
+// guest u32 with wall-clock timestamps, without perturbing guest stores.
+void *poll_fn(void *arg) {
+    uint64_t addr = *(uint64_t *)arg;
+    uint32_t last = 0xdeadbeef;
+    struct timespec t0;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    for (;;) {
+        uint32_t v = 0xdead0003;
+        struct task *t = pid_get_task(1);
+        if (t && t->mem) {
+            extern uint32_t mem_watch_peek32_mem(struct mem *mem, uint64_t addr);
+            v = mem_watch_peek32_mem(t->mem, addr);
+        }
+        if (v != last) {
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            double dt = (now.tv_sec - t0.tv_sec) + (now.tv_nsec - t0.tv_nsec) / 1e9;
+            fprintf(stderr, "[poll] t=%.4fs [0x%llx] = 0x%x (was 0x%x)\n",
+                    dt, (unsigned long long)addr, v, last);
+            last = v;
+        }
+        usleep(1000);
+    }
+    return NULL;
+}
+
 int main(int argc, char *const argv[]) {
     ish_signpost_init();
     atexit(dump_pc_hist);
     { extern void dump_wx_stats(void); atexit(dump_wx_stats); }
+    // Write watchpoint (diagnostic): ISH_WATCH_PAGE=<hex page addr> arms the
+    // per-store page check in the write gadgets; ISH_WATCH_LO/HI narrow which
+    // hits get recorded.
+    {
+        extern volatile addr_t g_watch_page_val;
+        extern volatile addr_t g_watch_pages[2];
+        extern volatile uint64_t g_watch_lo, g_watch_hi;
+        const char *w = getenv("ISH_WATCH_PAGE");
+        if (w) g_watch_page_val = g_watch_pages[0] = strtoull(w, NULL, 16) & ~0xfffULL;
+        const char *w2 = getenv("ISH_WATCH_PAGE2");
+        if (w2) g_watch_pages[1] = strtoull(w2, NULL, 16) & ~0xfffULL;
+        const char *lo = getenv("ISH_WATCH_LO"), *hi = getenv("ISH_WATCH_HI");
+        if (lo) g_watch_lo = strtoull(lo, NULL, 16);
+        if (hi) g_watch_hi = strtoull(hi, NULL, 16);
+        extern volatile uint64_t g_watch_lo2, g_watch_hi2;
+        const char *lo2 = getenv("ISH_WATCH_LO2"), *hi2 = getenv("ISH_WATCH_HI2");
+        if (lo2) g_watch_lo2 = strtoull(lo2, NULL, 16);
+        if (hi2) g_watch_hi2 = strtoull(hi2, NULL, 16);
+        extern volatile uint64_t g_watch_field;
+        const char *fv = getenv("ISH_WATCH_FIELD");
+        if (fv) g_watch_field = strtoull(fv, NULL, 16);
+    }
+    // Zero-perturbation host-side poller: ISH_POLL_ADDR=<hex> samples a guest
+    // u32 in pid 1's address space every ~1ms and logs transitions. Unlike the
+    // store watchpoint this doesn't slow guest stores at all, so it can't
+    // scare a timing-sensitive race away.
+    {
+        const char *pa = getenv("ISH_POLL_ADDR");
+        if (pa) {
+            static uint64_t poll_addr;
+            poll_addr = strtoull(pa, NULL, 16);
+            pthread_t pt;
+            void *poll_fn(void *arg);
+            pthread_create(&pt, NULL, poll_fn, &poll_addr);
+        }
+    }
 
     // Microbench helper: on SIGTERM/SIGINT, dump stats then _exit. This
     // bypasses the normal halt_system path which doesn't trigger when

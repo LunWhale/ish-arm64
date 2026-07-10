@@ -368,6 +368,17 @@ dword_t sys_madvise(addr_t addr, dword_t len, dword_t advice) {
     if (advice == 8 /* MADV_FREE */)
         return 0;
 
+    // Diagnostic: ISH_NO_DONTNEED=1 treats MADV_DONTNEED as a no-op (like
+    // MADV_FREE) to test whether the in-place zeroing loses concurrent writes.
+    {
+        static int no_dontneed = -1;
+        if (no_dontneed == -1) {
+            const char *e = getenv("ISH_NO_DONTNEED");
+            no_dontneed = (e && e[0] == '1') ? 1 : 0;
+        }
+        if (no_dontneed && advice == 4)
+            return 0;
+    }
     if (advice == 4 /* MADV_DONTNEED */) {
         // MADV_DONTNEED: the next access must see zero-fill. Zeroing the host
         // backing in place is only safe if concurrent readers on other threads

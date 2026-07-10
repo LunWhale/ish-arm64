@@ -228,6 +228,9 @@ extern int current_pid(void);
 // Stubs for debug hooks referenced from assembly/gen.c/tlb.c
 volatile bool g_trace_highbits = false;
 volatile addr_t g_watch_page_val = 0;
+// Second watched page, contiguous with a shadow copy of the first so the asm
+// fast path can ldp both. main.c keeps g_watch_pages[0] == g_watch_page_val.
+volatile addr_t g_watch_pages[2] = {0, 0};
 
 #ifdef ISH_GADGET_PROFILE
 // Gadget call profile: ring buffer of next-gadget pointers, written by `gret`.
@@ -237,9 +240,70 @@ __attribute__((aligned(64))) uint64_t g_profile_idx = 0;
 #endif
 
 void jit_trace_regs(struct cpu_state *cpu) { (void)cpu; }
-void c_watch_write_hit(addr_t addr, const char *caller) { (void)addr; (void)caller; }
+
+// Write-watchpoint recording (diagnostic). Arm with ISH_WATCH_PAGE=<hex page>;
+// every guest store to that page (asm fast path via jit_watch_write_hit, C
+// helpers via c_watch_write_hit) is recorded in a ring, dumped on fatal GPF
+// (ISH_GPF_BT) and at exit. block_pc is the start PC of the translated block
+// doing the store — symbolizable against the guest binary.
+#define WATCH_RING 512
+static struct watch_hit { uint64_t addr, block_pc, cpu_pc; uint32_t field_val; int c_path; } watch_ring[WATCH_RING];
+static _Atomic uint32_t watch_ring_n;
+// Optional sub-page record filter (ISH_WATCH_LO/ISH_WATCH_HI, hex): keeps the
+// ring from being flooded by unrelated writes to the same hot heap page.
+// ISH_WATCH_FIELD: a u32 guest address snapshotted at every hit (pre-store),
+// so the timeline shows exactly when the field changed and which recorded
+// write (or unrecorded host-side write) it correlates with.
+volatile uint64_t g_watch_lo, g_watch_hi, g_watch_lo2, g_watch_hi2, g_watch_field;
+uint32_t mem_watch_peek32(uint64_t addr);  // kernel/memory.c
+static inline void watch_record(uint64_t addr, uint64_t block_pc, uint64_t cpu_pc, int c_path) {
+    if (c_path < 2 && g_watch_hi &&
+            (addr < g_watch_lo || addr >= g_watch_hi) &&
+            !(g_watch_hi2 && addr >= g_watch_lo2 && addr < g_watch_hi2))
+        return;
+    uint32_t fv = g_watch_field ? mem_watch_peek32(g_watch_field) : 0;
+    uint32_t i = atomic_fetch_add_explicit(&watch_ring_n, 1, memory_order_relaxed);
+    watch_ring[i % WATCH_RING] = (struct watch_hit){addr, block_pc, cpu_pc, fv, c_path};
+}
+void c_watch_write_hit(addr_t addr, const char *caller) {
+    (void)caller;
+    watch_record(addr, jit_saved_pc, 0, 1);
+}
+// Register snapshot at the moment the watched FIELD itself is stored: the
+// store gadget reads its value from cpu->regs, so regs[] shows both the value
+// about to be written and the source pointers the guest derived it from.
+uint64_t g_watch_field_regs[32];
+volatile int g_watch_field_hit_count;
 void jit_watch_write_hit(struct cpu_state *cpu, addr_t store_addr, unsigned long *code_ptr) {
-    (void)cpu; (void)store_addr; (void)code_ptr;
+    (void)code_ptr;
+    if (cpu && g_watch_field && store_addr == g_watch_field) {
+        if (g_watch_field_hit_count++ == 0) {
+            for (int i = 0; i < 31; i++) g_watch_field_regs[i] = cpu->regs[i];
+            g_watch_field_regs[31] = cpu->pc;
+        }
+    }
+    watch_record(store_addr, jit_saved_pc, cpu ? cpu->pc : 0, 0);
+}
+// Host-side write acquisition on the watched page (mem_ptr MEM_WRITE: syscall
+// user_write, madvise zeroing, CoW copies...) — bypasses the guest store
+// gadgets, so record it separately; not subject to the LO/HI window.
+void watch_record_memptr(uint64_t addr) {
+    watch_record(addr, jit_saved_pc, 0, 2);
+}
+void dump_watch_hits(uint64_t filter_lo, uint64_t filter_hi) {
+    (void)filter_lo; (void)filter_hi;
+    uint32_t total = atomic_load_explicit(&watch_ring_n, memory_order_relaxed);
+    uint32_t kept = total < WATCH_RING ? total : WATCH_RING;
+    fprintf(stderr, "[watch] %u total hits, showing last %u\n", total, kept);
+    for (uint32_t k = 0; k < kept; k++) {
+        uint32_t i = (total - kept + k) % WATCH_RING;
+        struct watch_hit *h = &watch_ring[i];
+        fprintf(stderr, "[watch] #%u addr=0x%llx block_pc=0x%llx cpu_pc=0x%llx field=0x%x %s\n",
+                total - kept + k, (unsigned long long)h->addr,
+                (unsigned long long)h->block_pc, (unsigned long long)h->cpu_pc,
+                h->field_val,
+                h->c_path == 2 ? "(mem_ptr)" : h->c_path ? "(C)" : "(jit)");
+    }
 }
 void jit_highbit_alert(struct cpu_state *cpu) { (void)cpu; }
 

@@ -928,6 +928,16 @@ check_reservation: ;
     }
 
 have_entry:
+    // Diagnostic write watchpoint: host-side write acquisitions (user_write,
+    // madvise zeroing, CoW) bypass the guest store gadgets — record them too.
+    if (type == MEM_WRITE || type == MEM_WRITE_PTRACE) {
+        extern volatile addr_t g_watch_pages[2];
+        if (g_watch_pages[0] && ((addr & ~0xfffULL) == g_watch_pages[0] ||
+                                 (addr & ~0xfffULL) == g_watch_pages[1])) {
+            extern void watch_record_memptr(uint64_t addr);
+            watch_record_memptr(addr);
+        }
+    }
     if (entry != NULL && (type == MEM_WRITE || type == MEM_WRITE_PTRACE)) {
         // if page is unwritable, well tough luck
         if (type != MEM_WRITE_PTRACE && !(entry->flags & P_WRITE))
@@ -996,6 +1006,21 @@ have_entry:
     assert(old_ptr == NULL || old_ptr == ptr || type == MEM_WRITE_PTRACE);
 #endif
     return ptr;
+}
+
+// Diagnostic: racy unlocked peek of a guest u32 for the write watchpoint.
+uint32_t mem_watch_peek32_mem(struct mem *mem, uint64_t addr) {
+    if (mem == NULL)
+        return 0xdead0001;
+    struct pt_entry *entry = mem_pt(mem, PAGE(addr));
+    if (entry == NULL || entry->data == NULL)
+        return 0xdead0002;
+    return *(uint32_t *)((char *)entry->data->data + entry->offset + PGOFFSET(addr));
+}
+uint32_t mem_watch_peek32(uint64_t addr) {
+    if (current == NULL)
+        return 0xdead0001;
+    return mem_watch_peek32_mem(current->mem, addr);
 }
 
 // W^X code-page protection: mark `page` as containing compiled guest code.
