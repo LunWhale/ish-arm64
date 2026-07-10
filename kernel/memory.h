@@ -93,6 +93,9 @@ struct mem {
 void mem_init(struct mem *mem);
 // Uninitialize the address space
 void mem_destroy(struct mem *mem);
+// Bump the memory-change generation (for page-backing mutations that bypass
+// pt_map/pt_unmap, e.g. madvise MADV_DONTNEED in-place zeroing).
+void mem_changed_pub(struct mem *mem);
 // Return the pagetable entry for the given page
 struct pt_entry *mem_pt(struct mem *mem, page_t page);
 // Increment *page, skipping over unallocated page directories. Intended to be

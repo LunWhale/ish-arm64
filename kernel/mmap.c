@@ -337,21 +337,39 @@ int_t sys_mprotect(addr_t addr, addr_t len, int_t prot) {
 
 dword_t sys_madvise(addr_t addr, dword_t len, dword_t advice) {
     STRACE("madvise(0x%llx, 0x%x, %d)", (unsigned long long)addr, len, advice);
-    if (advice == 4 /* MADV_DONTNEED */ || advice == 8 /* MADV_FREE */) {
+    // MADV_FREE (8) is purely advisory: the kernel MAY reclaim the pages under
+    // memory pressure, but until then reads still return the old contents.
+    // Eagerly zeroing them is both wrong (a subsequent read that races the
+    // reclaim must see either old-or-zero, never a torn mix) and dangerous
+    // under threads — another thread aliasing the page via a live TLB entry
+    // would observe it turn to zero mid-computation. JSC's scavenger uses
+    // MADV_FREE heavily; treat it as a no-op (safe: we just keep the memory).
+    if (advice == 8 /* MADV_FREE */)
+        return 0;
+
+    if (advice == 4 /* MADV_DONTNEED */) {
+        // MADV_DONTNEED: the next access must see zero-fill. Zeroing the host
+        // backing in place is only safe if concurrent readers on other threads
+        // re-check coherence — so bump mmu->changes (via mem_changed) so their
+        // per-block / per-access TLB coherence check forces a re-translate
+        // rather than reading the half-zeroed page through a stale entry.
         addr_t end = addr + len;
+        bool any = false;
         for (addr_t p = addr; p < end; p += PAGE_SIZE) {
-            read_wrlock(&current->mem->lock);
-#ifdef GUEST_ARM64
+            write_wrlock(&current->mem->lock);
             if (mem_pt(current->mem, PAGE(p)) == NULL) {
-                read_wrunlock(&current->mem->lock);
+                write_wrunlock(&current->mem->lock);
                 continue;
             }
-#endif
             void *ptr = mem_ptr(current->mem, p, MEM_WRITE);
-            read_wrunlock(&current->mem->lock);
-            if (ptr != NULL)
+            if (ptr != NULL) {
                 memset(ptr, 0, PAGE_SIZE);
+                any = true;
+            }
+            write_wrunlock(&current->mem->lock);
         }
+        if (any)
+            mem_changed_pub(current->mem);
     }
     return 0;
 }

@@ -749,6 +749,14 @@ static void mem_changed(struct mem *mem) {
     __atomic_add_fetch(&mem->mmu.changes, 1, __ATOMIC_RELEASE);
 }
 
+// Public wrapper: bump the memory-change generation so other threads' TLB
+// coherence checks force a re-translate. Used by paths that mutate page
+// backing without going through pt_map/pt_unmap (e.g. madvise MADV_DONTNEED
+// zeroing a page in place).
+void mem_changed_pub(struct mem *mem) {
+    mem_changed(mem);
+}
+
 // This version will return NULL instead of making necessary pagetable changes.
 // Used by the emulator to avoid deadlocks.
 static void *mem_ptr_nofault(struct mem *mem, addr_t addr, int type) {
