@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <setjmp.h>
 #include <errno.h>
+#include <time.h>
 #include "misc.h"
 #include "debug.h"
 
@@ -144,7 +145,23 @@ static inline void read_wrunlock(wrlock_t *lock) {
     if (pthread_rwlock_unlock(&lock->l) != 0) __builtin_trap();
 }
 static inline void __write_wrlock(wrlock_t *lock, const char *file, int line) {
-    if (pthread_rwlock_wrlock(&lock->l) != 0) __builtin_trap();
+    // Acquire the write lock without letting a *waiting* writer freeze out
+    // readers (which macOS's writer-preferring pthread_rwlock does). We spin
+    // on trywrlock instead of a blocking wrlock: while we're merely retrying
+    // (not queued as a waiter), concurrent readers can still take the lock.
+    //
+    // This is load-bearing for the JIT: task_run_current holds mem->lock as a
+    // READER for the duration of each JIT quantum and re-acquires it every
+    // ~1024 blocks. Under a blocking writer-preferring wrlock, one thread
+    // requesting the write lock (mmap/munmap/CoW, e.g. JSC's GC sweep) freezes
+    // EVERY other JIT thread at its next read_wrlock — and if the writer is
+    // itself waiting on those threads to reach a GC safepoint, the whole VM
+    // deadlocks (observed intermittently in claude-cli startup). Spinning
+    // keeps readers live so they can progress and release, letting the writer
+    // eventually win a trylock.
+    struct timespec _ts = {0, 1000}; // 1us backoff
+    while (pthread_rwlock_trywrlock(&lock->l) != 0)
+        nanosleep(&_ts, NULL);
     assert(lock->val == 0);
     lock->val = -1;
     lock->file = file;
