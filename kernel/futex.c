@@ -114,8 +114,42 @@ static int futex_load(struct futex *futex, dword_t *out) {
     return 0;
 }
 
+// Debug: per-thread record of the futex address currently being waited on
+// (0 when not in futex_wait). Read by the ISH_FUTEX_DBG dumper via pid map.
+#define FUTEX_DBG_MAX 64
+static struct { int pid; addr_t uaddr; dword_t val; } g_futex_waiters[FUTEX_DBG_MAX];
+static void futex_dbg_set(int pid, addr_t uaddr, dword_t val) {
+    for (int i = 0; i < FUTEX_DBG_MAX; i++) {
+        if (g_futex_waiters[i].pid == pid || g_futex_waiters[i].pid == 0) {
+            g_futex_waiters[i].pid = pid;
+            g_futex_waiters[i].uaddr = uaddr;
+            g_futex_waiters[i].val = val;
+            return;
+        }
+    }
+}
+addr_t futex_dbg_get(int pid) {
+    for (int i = 0; i < FUTEX_DBG_MAX; i++)
+        if (g_futex_waiters[i].pid == pid) return g_futex_waiters[i].uaddr;
+    return 0;
+}
+
+static addr_t futex_watch_addr(void) {
+    static addr_t a = 1;
+    if (a == 1) { const char *e = getenv("ISH_FUTEX_WATCH"); a = e ? strtoull(e, NULL, 16) : 0; }
+    return a;
+}
+
 static int futex_wait(addr_t uaddr, dword_t val, struct timespec *timeout) {
+    futex_dbg_set(current->pid, uaddr, val);
     struct futex *futex = futex_get(uaddr);
+    if (uaddr == futex_watch_addr()) {
+        dword_t rv = 0xdeadbeef;
+        { dword_t *vp = mem_ptr(current->mem, uaddr, MEM_READ); if (vp) rv = *vp; }
+        fprintf(stderr, "[fw] pid=%d WAIT uaddr=0x%llx expect_val=0x%x actual_mem=0x%x %s\n",
+                current->pid, (unsigned long long)uaddr, val, rv,
+                rv != val ? "(MISMATCH→EAGAIN)" : "(match→sleep)");
+    }
     int err = 0;
     dword_t tmp;
     if (futex_load(futex, &tmp))
@@ -196,6 +230,35 @@ static int futex_wait(addr_t uaddr, dword_t val, struct timespec *timeout) {
             read_wrunlock(&current->mem->lock);
             if (ptr == NULL) { err = _EFAULT; break; }
             if (*ptr != val) { err = 0; break; }
+            // Debug: dump all threads' state once when stalled past a short
+            // gated threshold (ISH_FUTEX_DBG=<seconds>). Helps diagnose which
+            // thread holds the lock the stalled thread is waiting on.
+            {
+                static int dbg_secs = -2;
+                if (dbg_secs == -2) {
+                    const char *e = getenv("ISH_FUTEX_DBG");
+                    dbg_secs = e ? atoi(e) : -1;
+                }
+                static int dumped = 0;
+                if (dbg_secs > 0 && stall_count == dbg_secs * 10 &&
+                        __atomic_exchange_n(&dumped, 1, __ATOMIC_SEQ_CST) == 0) {
+                    dword_t curval = 0xffffffff;
+                    { dword_t *vp = mem_ptr(current->mem, uaddr, MEM_READ); if (vp) curval = *vp; }
+                    printk("FUTEX-DBG: pid=%d stalled %ds on uaddr=0x%x (curval=0x%x, waited-for val=%d)\n",
+                           current->pid, stall_count/10, uaddr, curval, val);
+                    lock(&pids_lock);
+                    struct task *t;
+                    list_for_each_entry(&current->group->threads, t, group_links) {
+                        addr_t waddr = futex_dbg_get(t->pid);
+                        dword_t wv = 0xffffffff;
+                        if (waddr) { dword_t *vp = mem_ptr(t->mem, waddr, MEM_READ); if (vp) wv = *vp; }
+                        printk("  thread pid=%d blocking=%d x8=%lld futex_uaddr=0x%llx curval=0x%x\n",
+                               t->pid, t->blocking, (long long)t->cpu.regs[8],
+                               (unsigned long long)waddr, wv);
+                    }
+                    unlock(&pids_lock);
+                }
+            }
             // Safety valve: continuous infinite futex stall > 180s.
             if (timeout == NULL && stall_count >= 1800) { // 1800 * 100ms = 180s
                 bool has_live_children = false;
@@ -248,6 +311,7 @@ static int futex_wait(addr_t uaddr, dword_t val, struct timespec *timeout) {
     }
     futex_put(futex);
 futex_wait_done:
+    futex_dbg_set(current->pid, 0, 0);
     STRACE("%d end futex(FUTEX_WAIT)", current->pid);
     return err;
 }
@@ -274,6 +338,9 @@ static int futex_wakelike(int op, addr_t uaddr, dword_t wake_max, dword_t requeu
     struct futex *futex = futex_get(uaddr);
 
     unsigned woken = futex_wake_queue(futex, wake_max);
+    if (uaddr == futex_watch_addr())
+        fprintf(stderr, "[fw] pid=%d WAKE uaddr=0x%llx max=%d woken=%u\n",
+                current->pid, (unsigned long long)uaddr, wake_max, woken);
 
     if (op == FUTEX_REQUEUE_) {
         struct futex *futex2 = futex_get_unlocked(requeue_addr);
