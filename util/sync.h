@@ -8,6 +8,7 @@
 #include <setjmp.h>
 #include <errno.h>
 #include <time.h>
+#include <stdio.h>
 #include "misc.h"
 #include "debug.h"
 
@@ -42,9 +43,28 @@ static inline void lock_init(lock_t *lock) {
 #else
 #define LOCK_INITIALIZER {PTHREAD_MUTEX_INITIALIZER, 0}
 #endif
+extern int g_lock_slow_trace; // set from ISH_LOCK_TRACE at startup
 static inline void __lock(lock_t *lock, __attribute__((unused)) const char *file, __attribute__((unused)) int line) {
+    if (g_lock_slow_trace) {
+        struct timespec _s; clock_gettime(CLOCK_MONOTONIC, &_s);
+        int spun = 0;
+        while (pthread_mutex_trylock(&lock->m) != 0) {
+            struct timespec _b = {0, 200000}; nanosleep(&_b, NULL);
+            struct timespec _n; clock_gettime(CLOCK_MONOTONIC, &_n);
+            long ms = (_n.tv_sec-_s.tv_sec)*1000 + (_n.tv_nsec-_s.tv_nsec)/1000000;
+            if (ms > 3000 && !spun) {
+                spun = 1;
+                extern int current_pid(void);
+                fprintf(stderr, "[lockslow] pid=%d waiting >3s at %s:%d for lock=%p\n",
+                        current_pid(), file, line, (void*)lock);
+            }
+        }
+        lock->owner = pthread_self();
+        goto done;
+    }
     pthread_mutex_lock(&lock->m);
     lock->owner = pthread_self();
+done:;
 #if LOCK_DEBUG
     assert(lock->debug.initialized);
     assert(!lock->debug.file && "Attempting to recursively lock");

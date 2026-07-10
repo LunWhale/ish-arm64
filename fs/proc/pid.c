@@ -296,13 +296,21 @@ static bool proc_pid_fd_readdir(struct proc_entry *entry, unsigned long *index, 
     struct task *task = proc_get_task(entry);
     if (task == NULL)
         return _ESRCH;
-    lock(&task->files->lock);
-    while (*index < task->files->size && task->files->files[*index] == NULL)
+    // Retain the fdtable, then drop pids_lock BEFORE taking files->lock, to
+    // avoid the pids_lock -> files->lock ordering (proc_get_task holds
+    // pids_lock). Other paths take files->lock and then pids_lock (e.g. via
+    // proc_entry_stat); holding both here in the opposite order deadlocked
+    // claude-cli startup when 20+ bun workers scan /proc/self/fd at once.
+    struct fdtable *files = task->files;
+    files->refcount++;
+    proc_put_task(task); // releases pids_lock
+    lock(&files->lock);
+    while (*index < files->size && files->files[*index] == NULL)
         (*index)++;
     fd_t f = (*index)++;
-    bool any_left = (unsigned) f < task->files->size;
-    unlock(&task->files->lock);
-    proc_put_task(task);
+    bool any_left = (unsigned) f < files->size;
+    unlock(&files->lock);
+    fdtable_release(files);
     *next_entry = (struct proc_entry) {&proc_pid_fd, .pid = entry->pid, .fd = f};
     return any_left;
 }
@@ -315,18 +323,24 @@ static int proc_pid_fd_readlink(struct proc_entry *entry, char *buf) {
     struct task *task = proc_get_task(entry);
     if (task == NULL)
         return _ESRCH;
+    // Retain the fd under files->lock, then drop BOTH files->lock and
+    // pids_lock (held by proc_get_task) before calling generic_getpath.
+    // getpath can take other subsystem locks (mounts, real fs), and holding
+    // pids_lock across it created a lock-ordering hazard against paths that
+    // take those locks first and then pids_lock — an intermittent deadlock
+    // during claude-cli startup when 20+ bun worker threads all scan
+    // /proc/self/fd concurrently. Also: fd may be NULL if another thread
+    // closed the descriptor (return ENOENT, not a host crash).
     lock(&task->files->lock);
     struct fd *fd = fdtable_get(task->files, entry->fd);
-    // fd may be NULL: another thread can close the descriptor between the
-    // proc lookup and here (bun's worker pool churns fds during startup).
-    // generic_getpath would then deref fd->mount and crash the host.
-    int err;
-    if (fd == NULL)
-        err = _ENOENT;
-    else
-        err = generic_getpath(fd, buf);
+    if (fd != NULL)
+        fd = fd_retain(fd);
     unlock(&task->files->lock);
-    proc_put_task(task);
+    proc_put_task(task); // releases pids_lock
+    if (fd == NULL)
+        return _ENOENT;
+    int err = generic_getpath(fd, buf);
+    fd_close(fd);
     return err;
 }
 
