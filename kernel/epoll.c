@@ -1,3 +1,4 @@
+#include <sys/stat.h>
 #include "kernel/calls.h"
 #include "fs/poll.h"
 
@@ -49,6 +50,14 @@ int_t sys_epoll_ctl(fd_t epoll_f, int_t op, fd_t f, addr_t event_addr) {
     struct fd *fd = f_get(f);
     if (fd == NULL)
         return _EBADF;
+
+    // Regular files (and directories) are not pollable: they are always
+    // "ready", so Linux rejects adding them to an epoll set with EPERM. iSH
+    // used to accept them, which makes bun's fs.WriteStream take its polling
+    // path (instead of the EPERM fallback) and then throw EEXIST on the second
+    // registration of the same fd. Match Linux and reject with EPERM.
+    if (op == EPOLL_CTL_ADD_ && (S_ISREG(fd->type) || S_ISDIR(fd->type)))
+        return _EPERM;
 
     if (op == EPOLL_CTL_DEL_)
         return poll_del_fd(epoll->epollfd.poll, fd);
