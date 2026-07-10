@@ -112,13 +112,40 @@ static int proc_pid_statm_show(struct proc_entry *entry, struct proc_data *buf) 
     if (task == NULL)
         return _ESRCH;
 
-    proc_printf(buf, "%lu ", 0); // total vm size
-    proc_printf(buf, "%lu ", 0); // vm resident size
-    proc_printf(buf, "%lu ", 0); // resident shared
-    proc_printf(buf, "%lu ", 0); // text
-    proc_printf(buf, "%lu ", 0); // lib (always 0 since linux 2.6)
-    proc_printf(buf, "%lu ", 0); // data + stack
-    proc_printf(buf, "%lu ", 0); // dirty (always 0 since linux 2.6)
+    // Count mapped pages by walking the page table. Reporting all-zeros here
+    // breaks runtimes (e.g. Bun/JSC) that derive pool/lock sizes from the
+    // reported VM size and reject a value of 0 ("Invalid value for lock: 0").
+    unsigned long total = 0;   // total program size (VmSize, in pages)
+    unsigned long resident = 0; // resident set size (VmRSS, in pages)
+    unsigned long shared = 0;   // resident shared pages
+    struct mem *mem = task->mem;
+    if (mem != NULL) {
+        read_wrlock(&mem->lock);
+        page_t page = 0;
+        while (page < MEM_PAGES) {
+            struct pt_entry *pt = mem_pt(mem, page);
+            if (pt != NULL) {
+                total++;
+                // A page backed by real data (not a pure PROT_NONE
+                // reservation / lazy anon) counts as resident.
+                if (pt->data != NULL) {
+                    resident++;
+                    if (pt->flags & P_SHARED)
+                        shared++;
+                }
+            }
+            mem_next_page(mem, &page);
+        }
+        read_wrunlock(&mem->lock);
+    }
+
+    proc_printf(buf, "%lu ", total);    // total program size
+    proc_printf(buf, "%lu ", resident); // resident set size
+    proc_printf(buf, "%lu ", shared);   // resident shared pages
+    proc_printf(buf, "%lu ", 0);        // text
+    proc_printf(buf, "%lu ", 0);        // lib (always 0 since linux 2.6)
+    proc_printf(buf, "%lu ", resident); // data + stack
+    proc_printf(buf, "%lu ", 0);        // dirty (always 0 since linux 2.6)
     proc_printf(buf, "\n");
 
     proc_put_task(task);

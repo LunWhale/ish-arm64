@@ -805,6 +805,7 @@ extern void gadget_writeback_addr(void);
 // Atomic memory operation helpers
 extern void gadget_atomic_rmw(void);
 extern void gadget_atomic_cas(void);
+extern void gadget_atomic_casp(void);
 
 // Memory barrier (DMB ISH) for acquire/release semantics
 extern void gadget_dmb(void);
@@ -966,6 +967,88 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         return 0;
     }
     state->last_insn = insn;
+
+#ifndef DISABLE_DECREF_FUSION
+    // Peephole: fuse CPython's inlined Py_DECREF fast path into one gadget.
+    // Pattern (refcnt Xr, object Xobj):
+    //   ldr  Xr, [Xobj]           ; r = obj->ob_refcnt  (imm offset 0)
+    //   tbnz Wr, #31, skip        ; immortal/negative → skip
+    //   sub  Xr, Xr, #1           ; r--
+    //   str  Xr, [Xobj]           ; write back
+    //   cbnz Xr, skip             ; still referenced → skip
+    // On match, emit one gadget_decref and consume all five instructions. This is
+    // the single hottest inlined pattern in _PyEval_EvalFrameDefault.
+    if ((insn & 0xffc00000) == 0xf9400000u &&         // LDR Xr, [Xobj, #imm]
+        ((insn >> 10) & 0xfff) == 0) {                // imm offset == 0
+        uint32_t r   = insn & 0x1f;
+        uint32_t obj = (insn >> 5) & 0x1f;
+        addr_t p2 = state->ip, p3, p4, p5;
+        uint32_t i2, i3, i4, i5;
+        p3 = p2;
+        if (arm64_read_insn(&p3, tlb, &i2)) { p4 = p3;
+        if (arm64_read_insn(&p4, tlb, &i3)) { p5 = p4;
+        if (arm64_read_insn(&p5, tlb, &i4)) { addr_t p6 = p5;
+        if (arm64_read_insn(&p6, tlb, &i5)) {
+            int tbnz_ok = (i2 & 0xfff8001f) == (0x37f80000u | r);   // tbnz Wr,#31,*
+            int sub_ok  = i3 == (0xd1000400u | (r << 5) | r);       // sub Xr,Xr,#1
+            int str_ok  = (i4 & 0xffc003ff) == (0xf9000000u | (obj << 5) | r) &&
+                          ((i4 >> 10) & 0xfff) == 0;                // str Xr,[Xobj]
+            int cbnz_ok = (i5 & 0xff00001f) == (0xb5000000u | r);   // cbnz Xr,*
+            if (tbnz_ok && sub_ok && str_ok && cbnz_ok) {
+                int64_t tbnz_off = arm64_sign_extend((int64_t)(((i2 >> 5) & 0x3fff)) << 2, 16);
+                addr_t skip = state->ip + tbnz_off;   // tbnz PC = state->ip (post-LDR)
+                addr_t dealloc = p5;                  // insn after cbnz (fallthrough)
+                extern void gadget_decref(void);
+                gen(state, (unsigned long) gadget_decref);
+                gen(state, obj);
+                gen(state, (unsigned long)(skip | (1ULL << 63)));
+                gen(state, (unsigned long)(dealloc | (1ULL << 63)));
+                state->ip = p6;                       // consumed ldr+tbnz+sub+str+cbnz
+                return 1;
+            }
+        }}}}
+    }
+#endif
+
+#ifndef DISABLE_INCREF_FUSION
+    // Peephole: fuse CPython's inlined Py_INCREF fast path into one gadget.
+    // Pattern (32-bit refcnt Wr, object Xobj):
+    //   ldr  Wr, [Xobj]           ; r = obj->ob_refcnt (low 32 bits, imm 0)
+    //   adds Wr, Wr, #1           ; r++, set flags
+    //   b.eq skip                 ; overflow (immortal marker) → don't write back
+    //   str  Wr, [Xobj]           ; write back
+    // The b.eq target is the instruction right after the str, so BOTH paths fall
+    // through to the next opcode — no branch out of the block. This is the LOAD_FAST
+    // / dup-ref hot path, dual of DECREF but with no dealloc branch (always fast).
+    if ((insn & 0xffc00000) == 0xb9400000u &&         // LDR Wr, [Xobj, #imm]
+        ((insn >> 10) & 0xfff) == 0) {                // imm offset == 0
+        uint32_t r   = insn & 0x1f;
+        uint32_t obj = (insn >> 5) & 0x1f;
+        addr_t q2 = state->ip, q3, q4;
+        uint32_t j2, j3, j4;
+        q3 = q2;
+        if (arm64_read_insn(&q3, tlb, &j2)) { q4 = q3;
+        if (arm64_read_insn(&q4, tlb, &j3)) { addr_t q5 = q4;
+        if (arm64_read_insn(&q5, tlb, &j4)) {
+            int adds_ok = j2 == (0x31000400u | (r << 5) | r);       // adds Wr,Wr,#1
+            int beq_ok  = (j3 & 0xff00001f) == 0x54000000u;         // b.eq skip
+            int str_ok  = (j4 & 0xffc003ff) == (0xb9000000u | (obj << 5) | r) &&
+                          ((j4 >> 10) & 0xfff) == 0;                // str Wr,[Xobj]
+            // The b.eq must target the instruction just after the str (fall-through
+            // for both paths). b.eq imm19 is at q3's PC = state->ip+4.
+            int64_t beq_off = arm64_sign_extend((int64_t)(((j3 >> 5) & 0x7ffff)) << 2, 21);
+            addr_t beq_target = (state->ip + 4) + beq_off;
+            addr_t after_str = q5;   // instruction after the str (fall-through)
+            if (adds_ok && beq_ok && str_ok && beq_target == after_str) {
+                extern void gadget_incref(void);
+                gen(state, (unsigned long) gadget_incref);
+                gen(state, obj);
+                state->ip = q5;      // consumed ldr+adds+b.eq+str
+                return 1;
+            }
+        }}}
+    }
+#endif
 
     // Handle a small subset of SVE/SVE2 instructions (modeled as 128-bit vectors)
     // SVE EOR Zd.D, Zn.D, Zm.D
@@ -2137,13 +2220,43 @@ static int gen_ldst(struct gen_state *state, uint32_t insn) {
         return 1;
     }
 
-    // Atomic compare-and-swap (CAS/CASA/CASL/CASAL)
-    // Encoding: size:001000:1:A:1:Rs:R:11111:Rn:Rt
-    // A=acquire (bit23), R=release (bit15)
-    if ((insn & 0x3f200c00) == 0x08200c00) {
+    // Atomic compare-and-swap PAIR (CASP/CASPA/CASPL/CASPAL) — 128-bit.
+    // Encoding: 0 sz 001000 0 A 1 Rs o0 11111 Rn Rt  (bit31=0, bit23=0)
+    // Must be matched BEFORE plain CAS below, and handled as a TRUE 128-bit
+    // atomic (both {Rs,Rs+1} vs mem and writing {Rt,Rt+1}). Handling it as a
+    // 64-bit CAS tears the pair — this is exactly the libpas pas_versioned_field
+    // {value,version} corruption that hangs Bun/JSC.
+    if ((insn & 0xbfa07c00) == 0x08207c00) {
+        uint32_t A = (insn >> 22) & 1;    // acquire (L, bit22)
+        uint32_t R = (insn >> 15) & 1;    // release (o0, bit15)
+        uint32_t rs = (insn >> 16) & 0x1f;  // expected pair (Rs, Rs+1)
+        uint32_t rn = (insn >> 5) & 0x1f;
+        uint32_t rt = insn & 0x1f;          // desired pair (Rt, Rt+1)
+
+        // Generate address from Rn
+        gen(state, (unsigned long) gadget_calc_addr_imm);
+        gen(state, rn | (0ULL << 8));  // offset = 0
+
+        if (R) gen(state, (unsigned long) gadget_dmb);  // release barrier before
+        gen(state, (unsigned long) gadget_atomic_casp);
+        gen(state, rs | ((uint64_t)rt << 8));
+        if (A) gen(state, (unsigned long) gadget_dmb);  // acquire barrier after
+        return 1;
+    }
+
+    // Atomic compare-and-swap (CAS/CASA/CASL/CASAL) — single register, any
+    // size (CASB/CASH/CAS w/x). Encoding: size:001000:1:A:1:Rs:R:11111:Rn:Rt
+    // bit23=1 distinguishes CAS from CASP (bit23=0). We must NOT also require
+    // bit31: bit31/bit30 are the size field, so byte CAS (CASB/CASALB, size=00,
+    // bit31=0) and halfword CAS (CASH, size=01) have bit31=0 and would be
+    // missed. The original mask (0x3f200c00) checked bit23 as part of neither —
+    // it matched CASP too (mis-handled as 64-bit CAS). This mask checks bit23=1
+    // (excludes CASP, handled above) but leaves the size field free so all four
+    // CAS widths match. A=acquire (L, bit22), R=release (o0, bit15).
+    if ((insn & 0x3fa07c00) == 0x08a07c00) {
         uint32_t size = (insn >> 30) & 0x3;
-        uint32_t A = (insn >> 23) & 1;    // acquire
-        uint32_t R = (insn >> 15) & 1;    // release
+        uint32_t A = (insn >> 22) & 1;    // acquire (L, bit22)
+        uint32_t R = (insn >> 15) & 1;    // release (o0, bit15)
         uint32_t rs = (insn >> 16) & 0x1f;  // expected value (and result)
         uint32_t rn = (insn >> 5) & 0x1f;
         uint32_t rt = insn & 0x1f;          // new value
@@ -2547,7 +2660,7 @@ static int gen_ldst(struct gen_state *state, uint32_t insn) {
 
             bool is_pre = (mode == 3);
             bool is_post = (mode == 1);
-            bool is_offset = (mode == 2);
+            bool is_offset = (mode == 2 || mode == 0);  // 0 = STNP/LDNP (non-temporal)
 
             if (!is_pre && !is_post && !is_offset) {
                 gen_interrupt(state, INT_UNDEFINED);
@@ -2600,10 +2713,12 @@ static int gen_ldst(struct gen_state *state, uint32_t insn) {
         // For signed offset mode (010), just calculate address
         // For post-indexed (001), use base first, then update
         // For pre-indexed (011), calculate address first, then use and update
+        // For non-temporal mode (000, STNP/LDNP), use signed-offset addressing
+        // — the non-temporal cache hint is advisory and safely ignored.
 
         bool is_pre = (mode == 3);
         bool is_post = (mode == 1);
-        bool is_offset = (mode == 2);
+        bool is_offset = (mode == 2 || mode == 0);  // 0 = STNP/LDNP (non-temporal)
 
         if (!is_pre && !is_post && !is_offset) {
             // Unsupported mode

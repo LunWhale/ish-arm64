@@ -405,6 +405,39 @@ __no_instrument int c_atomic_cas(struct tlb *tlb, addr_t addr, uint64_t expected
     }
 }
 
+// 128-bit atomic compare-and-swap for the CASP (Compare-And-Swap Pair)
+// instruction. CASP atomically compares/swaps a 16-byte pair — this MUST be
+// a single atomic 128-bit operation, not two 64-bit CAS, otherwise a torn
+// update can break lock-free algorithms that rely on the pair being updated
+// atomically (e.g. libpas's pas_versioned_field {value, version}).
+//
+// exp_lo/exp_hi = expected pair (Rs, Rs+1); des_lo/des_hi = desired pair
+// (Rt, Rt+1). On return, *old_lo/*old_hi hold the actual old pair (the CAS
+// writes the old value back into the expected registers, success or fail).
+// Returns 0 on success (host ptr valid), -1 on segfault.
+__no_instrument int c_atomic_cas128(struct tlb *tlb, addr_t addr,
+                                    uint64_t exp_lo, uint64_t exp_hi,
+                                    uint64_t des_lo, uint64_t des_hi,
+                                    uint64_t *old_lo, uint64_t *old_hi) {
+    if (old_lo == NULL || old_hi == NULL)
+        return -1;
+    // 16-byte access must not straddle a page boundary for a single ptr.
+    if (PGOFFSET(addr) > PAGE_SIZE - 16)
+        return -1;
+    void *ptr = __tlb_write_ptr(tlb, addr);
+    if (ptr == NULL)
+        return -1;
+    __uint128_t exp = ((__uint128_t)exp_hi << 64) | (__uint128_t)exp_lo;
+    __uint128_t des = ((__uint128_t)des_hi << 64) | (__uint128_t)des_lo;
+    __atomic_compare_exchange_n((__uint128_t *)ptr, &exp, des,
+                                false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    // exp is updated to the actual old value on failure (and unchanged =
+    // old value on success).
+    *old_lo = (uint64_t)exp;
+    *old_hi = (uint64_t)(exp >> 64);
+    return 0;
+}
+
 // STXR atomic compare-and-swap helper for LDXR/STXR emulation.
 // Compares memory at addr with expected_val, if equal stores new_val.
 // Returns 0 on success (CAS succeeded), 1 on failure (CAS lost race),

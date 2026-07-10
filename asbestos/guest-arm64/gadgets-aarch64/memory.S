@@ -3260,3 +3260,77 @@ ldxp_c_segfault:
     mov w0, #INT_GPF
     b fiber_exit
 
+/*
+ * CASP (Compare-And-Swap Pair) via C helper — a TRUE 128-bit atomic CAS.
+ * Must be atomic over the full 16 bytes; splitting into two 64-bit CAS would
+ * tear the pair and break lock-free algorithms (e.g. libpas versioned field).
+ * Code stream: [gadget addr][rs | (rt << 8)]  (size is fixed 64-bit pair)
+ *   expected pair = (Rs, Rs+1), desired pair = (Rt, Rt+1)
+ * Expects _addr = guest address (from calc_addr_imm).
+ * Writes the old pair back into (Rs, Rs+1).
+ */
+.gadget atomic_casp
+    ldr x22, [_pc]
+    add _pc, _pc, #8
+    and x23, x22, #0x1f         // rs
+    ubfx x25, x22, #8, #5       // rt
+    mov x24, _addr              // save guest address
+
+    add x12, _cpu, #CPU_x0
+    // Load expected pair from Rs, Rs+1 (Rs must be even; Rs=31 => XZR pair=0)
+    cmp x23, #31
+    b.eq 1f
+    add x9, x23, #1
+    ldr x13, [x12, x23, lsl #3]   // exp_lo
+    ldr x14, [x12, x9, lsl #3]    // exp_hi
+    b 2f
+1:  mov x13, #0
+    mov x14, #0
+2:
+    // Load desired pair from Rt, Rt+1
+    cmp x25, #31
+    b.eq 3f
+    add x10, x25, #1
+    ldr x15, [x12, x25, lsl #3]   // des_lo
+    ldr x16, [x12, x10, lsl #3]   // des_hi
+    b 4f
+3:  mov x15, #0
+    mov x16, #0
+4:
+    save_c
+    sub sp, sp, #16               // space for old_lo, old_hi outputs
+    sub x0, _tlb, #TLB_entries    // tlb
+    mov x1, x24                   // guest address
+    mov x2, x13                   // exp_lo
+    mov x3, x14                   // exp_hi
+    mov x4, x15                   // des_lo
+    mov x5, x16                   // des_hi
+    mov x6, sp                    // &old_lo
+    add x7, sp, #8                // &old_hi
+    bl NAME(c_atomic_cas128)
+    mov w19, w0                   // result (0 ok, -1 segfault)
+    ldr x20, [sp]                 // old_lo
+    ldr x21, [sp, #8]             // old_hi
+    add sp, sp, #16
+    restore_c
+    mov _addr, x24
+
+    cmn w19, #1
+    b.eq atomic_casp_segfault
+
+    // Write old pair back into Rs, Rs+1 (skip if XZR)
+    add x9, _cpu, #CPU_x0
+    cmp x23, #31
+    b.eq 5f
+    add x10, x23, #1
+    str x20, [x9, x23, lsl #3]
+    str x21, [x9, x10, lsl #3]
+5:  gret
+
+atomic_casp_segfault:
+    str x24, [_cpu, #CPU_segfault_addr]
+    mov w8, #1
+    strb w8, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+

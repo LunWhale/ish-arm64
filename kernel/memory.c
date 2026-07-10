@@ -250,7 +250,13 @@ static page_t pt_find_hole_from(struct mem *mem, pages_t size, page_t start) {
 // that don't fit in the low region. Used for Wasm guard regions etc.
 static page_t pt_find_hole_high(struct mem *mem, pages_t size) {
     // Search from 0x100000 (4GB) upward to USER_ADDR_MAX_PAGE
-    // Use a simple strategy: scan upward looking for unallocated L0 subtrees
+    // Use a simple strategy: scan upward looking for unallocated L0 subtrees.
+    // A subtree with no page-table nodes can still be covered by a lazy
+    // mem_reservation (e.g. the 512GB JSC gigacage / V8 cage), which does NOT
+    // create pt_node children. So we must also treat reservation-covered
+    // subtrees as occupied, otherwise we'd hand out a hole that
+    // hole_overlaps_reservation() then rejects, and the mmap fails with ENOMEM
+    // even though there's plenty of free VA above the reservation.
     page_t page = 0x100000; // Start at 4GB
     page_t hole_start = page;
     pages_t hole_size = 0;
@@ -259,25 +265,25 @@ static page_t pt_find_hole_high(struct mem *mem, pages_t size) {
         int i0 = PT_INDEX(page, 0);
         struct pt_node *l0 = mem->pgdir;
         struct pt_node *l1 = l0 ? l0->children[i0] : NULL;
-        if (l1 == NULL) {
-            // Entire L0 subtree is empty (2^27 pages = 512GB)
-            page_t l0_size = (page_t)1 << (PT_BITS * 3);
-            page_t l0_base = (page_t)i0 << (PT_BITS * 3);
+        page_t l0_size = (page_t)1 << (PT_BITS * 3);
+        page_t l0_base = (page_t)i0 << (PT_BITS * 3);
+        page_t subtree_end = l0_base + l0_size;
+        if (subtree_end > USER_ADDR_MAX_PAGE)
+            subtree_end = USER_ADDR_MAX_PAGE;
+        // Occupied if a page table exists OR a reservation overlaps this subtree.
+        bool occupied = (l1 != NULL) ||
+            hole_overlaps_reservation(mem, l0_base, l0_size);
+        if (!occupied) {
             if (hole_size == 0) hole_start = l0_base < page ? page : l0_base;
-            page_t subtree_end = l0_base + l0_size;
-            if (subtree_end > USER_ADDR_MAX_PAGE)
-                subtree_end = USER_ADDR_MAX_PAGE;
             hole_size = subtree_end - hole_start;
             if (hole_size >= size)
                 return hole_start;
             page = subtree_end;
             continue;
         }
-        // L1 exists — something is mapped here, skip
+        // Something is mapped/reserved here — reset the running hole and skip.
         hole_size = 0;
-        page_t l0_size = (page_t)1 << (PT_BITS * 3);
-        page_t l0_base = (page_t)i0 << (PT_BITS * 3);
-        page = l0_base + l0_size;
+        page = subtree_end;
     }
     return BAD_PAGE;
 }
