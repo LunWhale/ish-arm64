@@ -19,9 +19,15 @@ struct fd {
     struct list poll_fds;
     lock_t poll_lock;
     unsigned long offset;
+    // Links this fd into the global pidfd registry (pidfd_open only).
+    struct list pidfd_links;
 
     // fd data
     union {
+        // pidfd (pidfd_open): references a process by pid
+        struct {
+            pid_t_ pid;
+        } pidfd;
         // tty
         struct {
             struct tty *tty;

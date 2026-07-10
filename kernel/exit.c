@@ -171,6 +171,8 @@ noreturn void do_exit(int status) {
         } else {
             leader->zombie = true;
             notify(&parent->group->child_exit);
+            // Wake any pidfd poller waiting on this pid.
+            pidfd_notify_exit(leader->pid);
             struct siginfo_ info = {
                 .code = SI_KERNEL_,
                 .child.pid = current->pid,
