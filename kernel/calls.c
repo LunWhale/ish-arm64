@@ -749,6 +749,55 @@ void handle_interrupt(int interrupt) {
                 printk("  sp+0x3e8=0x%llx jit_crashes=%d\n",
                     (unsigned long long)(cpu->sp + 0x3e8),
                     jit_crash_count);
+                // Guest backtrace: walk the x29 frame chain (works for both
+                // AAPCS64 and JSC CallFrame layouts — caller frame at [fp],
+                // return PC at [fp+8]). Print the first frames and a return-PC
+                // histogram so an unbounded recursion shows its cycle.
+                if (getenv("ISH_GPF_BT")) {
+                    // Fresh re-read of the memory x1 points at (LLInt CodeBlock
+                    // candidate): distinguishes "load saw stale TLB data" (fresh
+                    // read differs from what the gadget loaded) from "memory
+                    // really holds this value".
+                    for (int off = 0; off <= 0x18; off += 4) {
+                        uint32_t v = 0;
+                        if (!user_get(cpu->regs[1] + off, v))
+                            printk("  [x1+0x%x] = 0x%x\n", off, v);
+                    }
+                    uint64_t fp = cpu->regs[29];
+                    uint64_t pcs[64]; int n = 0;
+                    struct { uint64_t pc; int count; } hist[32]; int nh = 0;
+                    for (int i = 0; i < 100000 && fp; i++) {
+                        uint64_t next_fp = 0, ret_pc = 0;
+                        if (user_get(fp, next_fp) || user_get(fp + 8, ret_pc)) break;
+                        if (n < 64) pcs[n++] = ret_pc;
+                        for (int h = 0; h < nh; h++)
+                            if (hist[h].pc == ret_pc) { hist[h].count++; ret_pc = 0; break; }
+                        if (ret_pc && nh < 32) { hist[nh].pc = ret_pc; hist[nh].count = 1; nh++; }
+                        if (next_fp <= fp) break;
+                        fp = next_fp;
+                    }
+                    printk("  [bt] first %d return PCs:\n", n);
+                    for (int i = 0; i < n; i++) printk("    #%d 0x%llx\n", i, (unsigned long long)pcs[i]);
+                    printk("  [bt] return PC histogram (unique among walked frames):\n");
+                    for (int h = 0; h < nh; h++)
+                        printk("    0x%llx x%d\n", (unsigned long long)hist[h].pc, hist[h].count);
+                    // Dump code preceding return PCs that live in JIT-generated
+                    // memory (0xc0000000 range) — the caller thunk's tail.
+                    for (int i = 0; i < n && i < 12; i++) {
+                        if (pcs[i] < 0xc0000000ULL || pcs[i] >= 0xe0000000ULL)
+                            continue;
+                        printk("  [bt] JIT code before ret pc 0x%llx:\n", (unsigned long long)pcs[i]);
+                        for (int k = -24; k <= 2; k++) {
+                            uint32_t insn = 0; bool ok = true;
+                            for (int j = 0; j < 4; j++) {
+                                uint8_t b;
+                                if (user_get(pcs[i] + k*4 + j, b)) { ok = false; break; }
+                                insn |= (uint32_t)b << (j*8);
+                            }
+                            if (ok) printk("    0x%llx: 0x%08x\n", (unsigned long long)(pcs[i] + k*4), insn);
+                        }
+                    }
+                }
                 // Dump block instructions when fault addr > 4GB (overflow address)
                 if (cpu->segfault_addr > 0x100000000ULL) {
                     printk("  block insns from PC=0x%llx:\n", (unsigned long long)cpu->pc);

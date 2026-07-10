@@ -258,6 +258,7 @@ static void microbench_signal_dump(int sig) {
 int main(int argc, char *const argv[]) {
     ish_signpost_init();
     atexit(dump_pc_hist);
+    { extern void dump_wx_stats(void); atexit(dump_wx_stats); }
 
     // Microbench helper: on SIGTERM/SIGINT, dump stats then _exit. This
     // bypasses the normal halt_system path which doesn't trigger when

@@ -52,12 +52,19 @@ static struct task *find_new_parent(struct task *task) {
 }
 
 noreturn void do_exit(int status) {
-    if (current && current->pid == 1) {
-        extern void dump_pc_hist(void);
-        extern void dump_pc_trace(void);
+    /* pid 1 dumps to stderr (the original behaviour). With ISH_PC_HIST_DIR set,
+     * EVERY exiting process also dumps its own per-pid histogram file, so a
+     * fork'd chain (pip wheel-build subprocesses) is captured whole. */
+    extern void dump_pc_hist(void);
+    extern void dump_pc_trace(void);
+    extern char *getenv(const char *);
+    if (current && (current->pid == 1 || getenv("ISH_PC_HIST_DIR"))) {
         dump_pc_hist();
-        dump_pc_trace();
+        if (current->pid == 1) dump_pc_trace();
     }
+    { extern void dump_wx_stats(void);
+      static int wx_dumped = 0;
+      if (!wx_dumped && current && current->pid == 1) { wx_dumped = 1; dump_wx_stats(); } }
     // If this thread was already marked as leaked by the safety valve,
     // the group leader has finished exiting and the group struct may be
     // freed. Don't touch any shared state — just kill the host thread.
@@ -201,6 +208,17 @@ noreturn void do_exit_group(int status) {
         dump_gadget_profile();
     }
 #endif
+    /* Per-process PC histogram for cross-subprocess aggregation (pip build). */
+    { extern char *getenv(const char *);
+      if (current && getenv("ISH_PC_HIST_DIR")) { extern void dump_pc_hist(void); dump_pc_hist(); } }
+    /* Stage trace: dump when init exits (covers all forked guest processes). */
+    { extern void dump_stage_trace(void);
+      static int st_dumped = 0;
+      if (!st_dumped && current && current->pid == 1) { st_dumped = 1; dump_stage_trace(); } }
+    /* Block execution profile (trace-AOT recording). */
+    { extern void dump_block_prof(void);
+      static int bp_dumped = 0;
+      if (!bp_dumped && current && current->pid == 1) { bp_dumped = 1; dump_block_prof(); } }
     // Leaked thread woke up after group already exited — bail silently.
     if (current->exiting) {
         current = NULL;
@@ -411,6 +429,8 @@ static void halt_system(void) {
     restore_termios();
     extern void dump_pc_hist(void);
     dump_pc_hist();
+    extern void dump_wx_stats(void);
+    dump_wx_stats();
 
     // Force exit the entire host process. Orphaned guest threads
     // (stuck in JIT loops after do_exit_group force cleanup) keep

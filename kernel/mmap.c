@@ -337,6 +337,27 @@ int_t sys_mprotect(addr_t addr, addr_t len, int_t prot) {
 
 dword_t sys_madvise(addr_t addr, dword_t len, dword_t advice) {
     STRACE("madvise(0x%llx, 0x%x, %d)", (unsigned long long)addr, len, advice);
+    if (PGOFFSET(addr) != 0)
+        return _EINVAL;
+    // Linux returns ENOMEM if any page in the range is not part of a mapping.
+    // This is load-bearing, not pedantry: musl's pthread_getattr_np probes the
+    // main-thread stack extent one page at a time with madvise(MADV_NORMAL)
+    // and relies on ENOMEM at the first unmapped page. Always returning
+    // success made it report the stack as RLIMIT_STACK-sized (128MB); bun then
+    // moves SP to that "bottom" and zeroes the whole range, faulting at the
+    // rlimit boundary (deterministic startup SIGSEGV at stack_top - 128MB).
+    // Lazy reservations count as mapped — natively they'd be PROT_NONE VMAs.
+    {
+        read_wrlock(&current->mem->lock);
+        for (page_t page = PAGE(addr); page < PAGE(addr) + PAGE_ROUND_UP(len); page++) {
+            if (mem_pt(current->mem, page) == NULL &&
+                    mem_find_reservation(current->mem, page) == NULL) {
+                read_wrunlock(&current->mem->lock);
+                return _ENOMEM;
+            }
+        }
+        read_wrunlock(&current->mem->lock);
+    }
     // MADV_FREE (8) is purely advisory: the kernel MAY reclaim the pages under
     // memory pressure, but until then reads still return the old contents.
     // Eagerly zeroing them is both wrong (a subsequent read that races the

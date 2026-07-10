@@ -142,6 +142,13 @@ struct pt_entry {
 #define P_ANONYMOUS (1 << 6)
 // mapping was created with MAP_SHARED, should not CoW
 #define P_SHARED (1 << 7)
+// W^X for the JIT: the page contains guest code that has been compiled into
+// fiber blocks. While set, no TLB entry may be stamped writable for the page
+// (translate_write_nofault refuses), so every guest store to it takes the
+// mem_ptr write-miss path, which invalidates the page's compiled blocks and
+// clears this flag (bumping mmu->changes) before the store is allowed to
+// land. Set by mmu_mark_code_page when a block is compiled from the page.
+#define P_CODE (1 << 8)
 
 bool pt_is_hole(struct mem *mem, page_t start, pages_t pages);
 page_t pt_find_hole(struct mem *mem, pages_t size);
@@ -175,6 +182,16 @@ int pt_copy_on_write(struct mem *src, struct mem *dst, page_t start, page_t page
 // Must call with mem read-locked.
 void *mem_ptr(struct mem *mem, addr_t addr, int type);
 int mem_segv_reason(struct mem *mem, addr_t addr);
+
+// W^X code-page protection (see P_CODE). Both must be called with the mem
+// read-locked (JIT context). mmu_mark_code_page marks the page as containing
+// compiled code; returns 1 if the page transitioned to code (mmu->changes was
+// bumped, staling every thread's cached writable TLB entry), 0 if it was
+// already marked, -1 if the page isn't mapped (nothing to protect).
+// mmu_code_page_intact reports whether the mark is still in place — a store
+// that raced with compilation clears it.
+int mmu_mark_code_page(struct mmu *mmu, page_t page);
+bool mmu_code_page_intact(struct mmu *mmu, page_t page);
 
 extern size_t real_page_size;
 

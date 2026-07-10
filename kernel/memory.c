@@ -644,9 +644,14 @@ int pt_map_nothing(struct mem *mem, page_t start, pages_t pages, unsigned flags)
     return pt_map(mem, start, pages, memory, 0, flags | P_ANONYMOUS);
 }
 
+// W^X stat: stores that hit a P_CODE page and unprotected it (see mem_ptr).
+_Atomic uint64_t st_wx_clears = 0;
+
 // Metadata flags that must be preserved across mprotect — they track
-// allocation type and state, not user-visible protection bits.
-#define P_META_FLAGS (P_ANONYMOUS | P_GROWSDOWN | P_COW | P_SHARED)
+// allocation type and state, not user-visible protection bits. P_CODE must
+// survive mprotect: making a compiled code page writable doesn't remove the
+// need to invalidate its blocks on the first store.
+#define P_META_FLAGS (P_ANONYMOUS | P_GROWSDOWN | P_COW | P_SHARED | P_CODE)
 
 int pt_set_flags(struct mem *mem, page_t start, pages_t pages, int flags) {
     for (page_t page = start; page < start + pages; page++) {
@@ -721,7 +726,9 @@ int pt_copy_on_write(struct mem *src, struct mem *dst, page_t start, page_t page
         struct pt_entry *dst_entry = mem_pt_new(dst, page);
         dst_entry->data = entry->data;
         dst_entry->offset = entry->offset;
-        dst_entry->flags = entry->flags;
+        // Don't inherit P_CODE: the child's asbestos has no blocks for this
+        // page yet; it re-marks on its own first compile.
+        dst_entry->flags = entry->flags & ~P_CODE;
 #if ANON_MMAP_LIMIT_PAGES > 0
         if (entry->flags & P_ANONYMOUS)
             anon_copied++;
@@ -800,7 +807,17 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
         rlim_t_ stack_limit = rlimit(RLIMIT_STACK_);
         if (stack_limit != RLIM_INFINITY_) {
             pages_t stack_pages = guard_page - page;
-            if ((uint64_t)stack_pages * PAGE_SIZE > stack_limit)
+            // Allow the same headroom native Linux effectively gives. Userspace
+            // (JSC/bun, glibc) derives its stack bound as SP_at_entry -
+            // RLIMIT_STACK, while we count from the stack VMA top (guard page),
+            // which sits args/env/auxv-sized bytes ABOVE that SP. Linux also
+            // grants the initial stack VMA 128KB of expansion headroom
+            // (setup_arg_pages: stack_expand = 131072). Without the slack, JS
+            // recursion that runs right up to JSC's believed bound faults one
+            // page BELOW our enforced bottom before JSC can raise RangeError —
+            // deterministic SIGSEGV at stack_top - RLIMIT_STACK (bun/claude).
+            uint64_t slack = 131072;
+            if ((uint64_t)stack_pages * PAGE_SIZE > stack_limit + slack)
                 return NULL;
         }
 
@@ -921,6 +938,22 @@ have_entry:
         }
         // get rid of any compiled blocks in this page
         asbestos_invalidate_page(mem->mmu.asbestos, page);
+        // W^X: the page holds compiled guest code. Unprotect it and bump
+        // mmu->changes so every thread's cached writable TLB entry for the
+        // page goes stale — later stores keep coming back through here while
+        // blocks exist. The invalidate above happened first, so a compile
+        // racing with this store either finished inserting (its block was
+        // just invalidated) or is still reading bytes (it will see the bump /
+        // cleared flag and discard its possibly-torn block).
+        if (__atomic_load_n(&entry->flags, __ATOMIC_RELAXED) & P_CODE) {
+            __atomic_fetch_and(&entry->flags, ~P_CODE, __ATOMIC_ACQ_REL);
+            atomic_fetch_add_explicit(&st_wx_clears, 1, memory_order_relaxed);
+            mem_changed(mem);
+            // Order the bump before the caller's store: a compiling thread
+            // that observes the (torn) store bytes must also observe the
+            // bump when it verifies.
+            __atomic_thread_fence(__ATOMIC_SEQ_CST);
+        }
         // if page is cow, ~~milk~~ copy it
         if (entry->flags & P_COW) {
             void *copy = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
@@ -965,6 +998,32 @@ have_entry:
     return ptr;
 }
 
+// W^X code-page protection: mark `page` as containing compiled guest code.
+// Caller must hold the mem read lock (JIT context). Returns 1 if the page
+// transitioned to code — mmu->changes is bumped so every thread's cached
+// writable TLB entry for the page goes stale and the next store faults into
+// mem_ptr (which invalidates the page's blocks and unprotects it). Returns 0
+// if already marked, -1 if the page isn't mapped.
+int mmu_mark_code_page(struct mmu *mmu, page_t page) {
+    struct mem *mem = container_of(mmu, struct mem, mmu);
+    struct pt_entry *entry = mem_pt(mem, page);
+    if (entry == NULL)
+        return -1;
+    unsigned old = __atomic_fetch_or(&entry->flags, P_CODE, __ATOMIC_ACQ_REL);
+    if (old & P_CODE)
+        return 0;
+    mem_changed(mem);
+    return 1;
+}
+
+// Whether the P_CODE mark placed by mmu_mark_code_page is still there. A
+// store that raced with compilation went through mem_ptr and cleared it.
+bool mmu_code_page_intact(struct mmu *mmu, page_t page) {
+    struct mem *mem = container_of(mmu, struct mem, mmu);
+    struct pt_entry *entry = mem_pt(mem, page);
+    return entry != NULL && (__atomic_load_n(&entry->flags, __ATOMIC_ACQUIRE) & P_CODE);
+}
+
 static void *mem_mmu_translate(struct mmu *mmu, addr_t addr, int type) {
     // Use mem_ptr instead of mem_ptr_nofault to properly handle:
     // 1. Copy-on-write (COW) pages - need to copy before write
@@ -973,7 +1032,14 @@ static void *mem_mmu_translate(struct mmu *mmu, addr_t addr, int type) {
 }
 
 static void *mem_mmu_translate_write_nofault(struct mmu *mmu, addr_t addr) {
-    return mem_ptr_nofault(container_of(mmu, struct mem, mmu), addr, MEM_WRITE);
+    struct mem *mem = container_of(mmu, struct mem, mmu);
+    // W^X: never stamp a writable TLB entry for a page holding compiled code.
+    // Stores must take the write-miss path (mem_ptr), which invalidates the
+    // page's blocks and clears P_CODE first.
+    struct pt_entry *entry = mem_pt(mem, PAGE(addr));
+    if (entry != NULL && (__atomic_load_n(&entry->flags, __ATOMIC_ACQUIRE) & P_CODE))
+        return NULL;
+    return mem_ptr_nofault(mem, addr, MEM_WRITE);
 }
 
 static struct mmu_ops mem_mmu_ops = {
