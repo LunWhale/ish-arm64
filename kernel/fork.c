@@ -1,4 +1,5 @@
 #include <time.h>
+#include <stddef.h>
 #include "debug.h"
 #include "kernel/task.h"
 #include "fs/fd.h"
@@ -217,6 +218,50 @@ dword_t sys_clone(dword_t flags, addr_t stack, addr_t ptid, addr_t tls, addr_t c
     }
 
     return pid;
+}
+
+// Linux clone3 clone_args structure (uapi/linux/sched.h). All fields u64.
+// We read only the subset iSH's sys_clone supports.
+struct clone_args_ {
+    uint64_t flags;         // CLONE_* flags (NOT combined with exit_signal)
+    uint64_t pidfd;         // ptr: where to store pidfd (unsupported → ignored)
+    uint64_t child_tid;     // ptr for CLONE_CHILD_SETTID/CLEARTID
+    uint64_t parent_tid;    // ptr for CLONE_PARENT_SETTID
+    uint64_t exit_signal;   // signal delivered to parent on exit
+    uint64_t stack;         // lowest byte of the child stack region
+    uint64_t stack_size;    // size of the child stack region
+    uint64_t tls;           // new TLS value for CLONE_SETTLS
+    uint64_t set_tid;       // ptr to pid array (unsupported)
+    uint64_t set_tid_size;
+    uint64_t cgroup;
+};
+
+dword_t sys_clone3(addr_t args_addr, dword_t size) {
+    STRACE("clone3(0x%x, %d)", args_addr, size);
+    // The first two u64 fields (flags, pidfd) were present since the initial
+    // clone3 ABI; require at least up to `tls` for anything meaningful.
+    if (size < offsetof(struct clone_args_, tls) + sizeof(uint64_t))
+        return _EINVAL;
+    if (size > sizeof(struct clone_args_))
+        size = sizeof(struct clone_args_);
+
+    struct clone_args_ args = {};
+    if (user_read(args_addr, &args, size))
+        return _EFAULT;
+
+    // clone3 keeps exit_signal separate from flags; the legacy sys_clone
+    // expects it OR'd into the low byte. Fold it back in.
+    dword_t flags = (dword_t)args.flags | ((dword_t)args.exit_signal & CSIGNAL_);
+
+    // clone3 passes the *base* of the stack region; the child SP is the top
+    // (stack + stack_size). Legacy clone passes the top directly. A zero
+    // stack means "share/copy the parent stack" (fork-like) — pass 0 through.
+    addr_t child_sp = 0;
+    if (args.stack != 0)
+        child_sp = (addr_t)(args.stack + args.stack_size);
+
+    return sys_clone(flags, child_sp, (addr_t)args.parent_tid,
+                     (addr_t)args.tls, (addr_t)args.child_tid);
 }
 
 dword_t sys_fork() {

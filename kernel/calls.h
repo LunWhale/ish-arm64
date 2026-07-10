@@ -30,6 +30,7 @@ int must_check user_write_string(addr_t addr, const char *buf);
 
 // process lifecycle
 dword_t sys_clone(dword_t flags, addr_t stack, addr_t ptid, addr_t tls, addr_t ctid);
+dword_t sys_clone3(addr_t args_addr, dword_t size);
 dword_t sys_fork(void);
 dword_t sys_vfork(void);
 dword_t sys_execve(addr_t file, addr_t argv, addr_t envp);
