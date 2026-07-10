@@ -851,15 +851,24 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
         // haven't been touched yet, which later store instructions then
         // fault on. The SIGSEGV handler runs on the same shallow stack
         // and recursively faults, corrupting PC to 0 (infinite loop).
-        // Cap expansion at 16 pages (64KB) to bound accidental
-        // expansion when a wild pointer just happens to fall into a
-        // growsdown region.
+        //
+        // CRITICAL: the fault page `page` MUST always be mapped, otherwise
+        // mem_pt(page) below returns NULL and the faulting store lands on
+        // unmapped memory — silently corrupting the frame. The old cap
+        // moved grow_start UP toward the stack, so a fault more than
+        // max_grow pages below the mapped stack (e.g. a single
+        // `sub sp, sp, #0x30000; str [sp]` — a >256KB frame faulting ~48
+        // pages down) left the fault page itself unmapped. Cap instead how
+        // far ABOVE the fault page we pre-map, to bound accidental
+        // expansion when a wild pointer falls into a growsdown region; the
+        // gap between the fault page and the stack, if any, grows later on
+        // demand. The fault page itself is never dropped.
         {
-            const pages_t max_grow = 16;
+            const pages_t max_grow = 256;   // pre-map window (1 MB)
             pages_t grow_end = p; // first already-mapped page
             pages_t grow_start = page;
             if ((pages_t)(grow_end - grow_start) > max_grow)
-                grow_start = grow_end - max_grow;
+                grow_end = grow_start + max_grow; // keep fault page, cap upward
             pages_t grow_count = grow_end - grow_start;
 #if ANON_MMAP_LIMIT_PAGES > 0
             atomic_fetch_add(&anon_page_count, grow_count);
