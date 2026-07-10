@@ -246,8 +246,10 @@ void jit_trace_regs(struct cpu_state *cpu) { (void)cpu; }
 // helpers via c_watch_write_hit) is recorded in a ring, dumped on fatal GPF
 // (ISH_GPF_BT) and at exit. block_pc is the start PC of the translated block
 // doing the store — symbolizable against the guest binary.
-#define WATCH_RING 512
-static struct watch_hit { uint64_t addr, block_pc, cpu_pc; uint32_t field_val; int c_path; } watch_ring[WATCH_RING];
+#define WATCH_RING 8192
+// stored_lo/hi = a candidate stored value captured from cpu regs at the hit
+// (for the numCalleeLocals block we snapshot x9, the value being str'd).
+static struct watch_hit { uint64_t addr, block_pc, cpu_pc, stored; uint32_t field_val; int c_path; } watch_ring[WATCH_RING];
 static _Atomic uint32_t watch_ring_n;
 // Optional sub-page record filter (ISH_WATCH_LO/ISH_WATCH_HI, hex): keeps the
 // ring from being flooded by unrelated writes to the same hot heap page.
@@ -256,14 +258,17 @@ static _Atomic uint32_t watch_ring_n;
 // write (or unrecorded host-side write) it correlates with.
 volatile uint64_t g_watch_lo, g_watch_hi, g_watch_lo2, g_watch_hi2, g_watch_field;
 uint32_t mem_watch_peek32(uint64_t addr);  // kernel/memory.c
-static inline void watch_record(uint64_t addr, uint64_t block_pc, uint64_t cpu_pc, int c_path) {
+static inline void watch_record2(uint64_t addr, uint64_t block_pc, uint64_t cpu_pc, uint64_t stored, int c_path) {
     if (c_path < 2 && g_watch_hi &&
             (addr < g_watch_lo || addr >= g_watch_hi) &&
             !(g_watch_hi2 && addr >= g_watch_lo2 && addr < g_watch_hi2))
         return;
     uint32_t fv = g_watch_field ? mem_watch_peek32(g_watch_field) : 0;
     uint32_t i = atomic_fetch_add_explicit(&watch_ring_n, 1, memory_order_relaxed);
-    watch_ring[i % WATCH_RING] = (struct watch_hit){addr, block_pc, cpu_pc, fv, c_path};
+    watch_ring[i % WATCH_RING] = (struct watch_hit){addr, block_pc, cpu_pc, stored, fv, c_path};
+}
+static inline void watch_record(uint64_t addr, uint64_t block_pc, uint64_t cpu_pc, int c_path) {
+    watch_record2(addr, block_pc, cpu_pc, 0, c_path);
 }
 void c_watch_write_hit(addr_t addr, const char *caller) {
     (void)caller;
@@ -274,15 +279,21 @@ void c_watch_write_hit(addr_t addr, const char *caller) {
 // about to be written and the source pointers the guest derived it from.
 uint64_t g_watch_field_regs[32];
 volatile int g_watch_field_hit_count;
+// Snapshot the LAST store to the watched field (not just the first): the store
+// that leaves the value wrong is what we want, and it's usually the last one.
+uint64_t g_watch_field_last_regs[32];
 void jit_watch_write_hit(struct cpu_state *cpu, addr_t store_addr, unsigned long *code_ptr) {
     (void)code_ptr;
     if (cpu && g_watch_field && store_addr == g_watch_field) {
-        if (g_watch_field_hit_count++ == 0) {
+        if (g_watch_field_hit_count++ == 0)
             for (int i = 0; i < 31; i++) g_watch_field_regs[i] = cpu->regs[i];
-            g_watch_field_regs[31] = cpu->pc;
-        }
+        for (int i = 0; i < 31; i++) g_watch_field_last_regs[i] = cpu->regs[i];
+        g_watch_field_regs[31] = g_watch_field_last_regs[31] = cpu->pc;
     }
-    watch_record(store_addr, jit_saved_pc, cpu ? cpu->pc : 0, 0);
+    // For the numCalleeLocals block (0x41eee2c), x9 is the value being stored
+    // to [x0+0x10]. Capture it so the ring shows what actually got written.
+    uint64_t stored = cpu ? cpu->regs[9] : 0;
+    watch_record2(store_addr, jit_saved_pc, cpu ? cpu->pc : 0, stored, 0);
 }
 // Host-side write acquisition on the watched page (mem_ptr MEM_WRITE: syscall
 // user_write, madvise zeroing, CoW copies...) — bypasses the guest store
@@ -291,19 +302,42 @@ void watch_record_memptr(uint64_t addr) {
     watch_record(addr, jit_saved_pc, 0, 2);
 }
 void dump_watch_hits(uint64_t filter_lo, uint64_t filter_hi) {
-    (void)filter_lo; (void)filter_hi;
     uint32_t total = atomic_load_explicit(&watch_ring_n, memory_order_relaxed);
     uint32_t kept = total < WATCH_RING ? total : WATCH_RING;
-    fprintf(stderr, "[watch] %u total hits, showing last %u\n", total, kept);
+    fprintf(stderr, "[watch] %u total hits, showing last %u in [0x%llx,0x%llx)\n",
+            total, kept, (unsigned long long)filter_lo, (unsigned long long)filter_hi);
     for (uint32_t k = 0; k < kept; k++) {
         uint32_t i = (total - kept + k) % WATCH_RING;
         struct watch_hit *h = &watch_ring[i];
+        if (filter_hi && (h->addr < filter_lo || h->addr >= filter_hi))
+            continue;
         fprintf(stderr, "[watch] #%u addr=0x%llx block_pc=0x%llx cpu_pc=0x%llx field=0x%x %s\n",
                 total - kept + k, (unsigned long long)h->addr,
                 (unsigned long long)h->block_pc, (unsigned long long)h->cpu_pc,
                 h->field_val,
                 h->c_path == 2 ? "(mem_ptr)" : h->c_path ? "(C)" : "(jit)");
     }
+}
+// Scan the whole ring for any store overlapping [addr, addr+8) — used at GPF to
+// answer "was the crashing object's numCalleeLocals qword ever written?"
+void dump_watch_hits_for(uint64_t addr) {
+    uint32_t total = atomic_load_explicit(&watch_ring_n, memory_order_relaxed);
+    uint32_t kept = total < WATCH_RING ? total : WATCH_RING;
+    fprintf(stderr, "[watch-for] scanning %u hits for stores to [0x%llx,0x%llx)\n",
+            kept, (unsigned long long)addr, (unsigned long long)(addr + 8));
+    int found = 0;
+    for (uint32_t k = 0; k < kept; k++) {
+        uint32_t i = (total - kept + k) % WATCH_RING;
+        struct watch_hit *h = &watch_ring[i];
+        if (h->addr >= addr - 0x8 && h->addr < addr + 0x10) {
+            fprintf(stderr, "[watch-for] #%u addr=0x%llx block_pc=0x%llx x9=0x%llx %s\n",
+                    total - kept + k, (unsigned long long)h->addr,
+                    (unsigned long long)h->block_pc, (unsigned long long)h->stored,
+                    h->c_path == 2 ? "(mem_ptr)" : h->c_path ? "(C)" : "(jit)");
+            found++;
+        }
+    }
+    fprintf(stderr, "[watch-for] %d stores overlapping the qword\n", found);
 }
 void jit_highbit_alert(struct cpu_state *cpu) { (void)cpu; }
 

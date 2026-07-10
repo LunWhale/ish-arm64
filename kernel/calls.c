@@ -769,6 +769,12 @@ void handle_interrupt(int interrupt) {
                                      i+2, i+2 < 31 ? (unsigned long long)g_watch_field_regs[i+2] : 0,
                                      i+3, i+3 < 31 ? (unsigned long long)g_watch_field_regs[i+3] : 0);
                           printk("    pc=0x%llx\n", (unsigned long long)g_watch_field_regs[31]);
+                          { extern uint64_t g_watch_field_last_regs[32];
+                            printk("  [watch-field] LAST hit x8=0x%llx x9=0x%llx x0=0x%llx x19=0x%llx\n",
+                                   (unsigned long long)g_watch_field_last_regs[8],
+                                   (unsigned long long)g_watch_field_last_regs[9],
+                                   (unsigned long long)g_watch_field_last_regs[0],
+                                   (unsigned long long)g_watch_field_last_regs[19]); }
                           // Fresh re-reads of candidate source pointers +0x14
                           for (int r = 0; r < 31; r++) {
                               uint64_t p = g_watch_field_regs[r];
@@ -778,15 +784,21 @@ void handle_interrupt(int interrupt) {
                                       printk("    [x%d+0x14] = 0x%x\n", r, v);
                               }
                           }
-                          // The load feeding the corrupted field came from
-                          // [x20 + 0x14]; dump that neighborhood.
-                          { uint64_t base = g_watch_field_regs[20];
+                          // Block 0x41eee2c reads numVars from [x19+0x18] and
+                          // numCalleeLocals from [x19+0x1c]; dump x19 source.
+                          { uint64_t base = g_watch_field_regs[19];
                             for (int off = 0; off < 0x40; off += 4) {
                                 uint32_t v = 0;
                                 if (!user_get(base + off, v))
-                                    printk("    [src 0x%llx+0x%x] = 0x%x\n",
+                                    printk("    [x19 0x%llx+0x%x] = 0x%x\n",
                                            (unsigned long long)base, off, v);
-                            } }
+                            }
+                            struct pt_entry *pe = mem_pt(current->mem, PAGE(base));
+                            if (pe)
+                                printk("    x19 page flags=0x%x data=%p off=0x%zx refcnt=%u\n",
+                                       pe->flags, pe->data ? pe->data->data : NULL, pe->offset,
+                                       pe->data ? pe->data->refcount : 0);
+                          }
                       } }
                     // Fresh re-read of the memory x1 points at (LLInt CodeBlock
                     // candidate): distinguishes "load saw stale TLB data" (fresh
@@ -803,6 +815,8 @@ void handle_interrupt(int interrupt) {
                         uint64_t unlinked = 0;
                         if (!user_get(cpu->regs[1] + 0x38, unlinked) && unlinked) {
                             printk("  unlinked=[x1+0x38]=0x%llx\n", (unsigned long long)unlinked);
+                            { extern void dump_watch_hits_for(uint64_t addr);
+                              dump_watch_hits_for(unlinked + 0x10); }
                             for (int off = 0; off <= 0x40; off += 8) {
                                 uint64_t v = 0;
                                 if (!user_get(unlinked + off, v))
