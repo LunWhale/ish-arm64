@@ -53,8 +53,13 @@ static int signal_action(struct sighand *sighand, int sig) {
     }
 }
 
+// Real-time signals (>= SIGRTMIN) queue: each delivery is a distinct instance
+// and must not be coalesced. Standard signals coalesce (one pending bit).
+// JSC's thread resume path uses RT signals (RTMIN/RT_1/RT_2); dropping a
+// duplicate as "already pending" loses a resume and wedges the GC handshake.
+#define SIGRTMIN_ 32
 static void deliver_signal_unlocked(struct task *task, int sig, struct siginfo_ info) {
-    if (sigset_has(task->pending, sig))
+    if (sig < SIGRTMIN_ && sigset_has(task->pending, sig))
         return;
 
     sigset_add(&task->pending, sig);
