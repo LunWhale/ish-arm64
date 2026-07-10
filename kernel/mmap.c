@@ -245,8 +245,30 @@ addr_t sys_mmap(addr_t args_addr) {
     return mmap_common(args.addr, args.len, args.prot, args.flags, args.fd, args.offset);
 }
 
+// Diagnostic (ISH_VMA_TRACE=1): log munmap/madvise/mprotect that touch a
+// file-backed mapping. Used to track how guest runtimes reclaim file-backed
+// regions (e.g. bun MADV_DONTNEED'ing its embedded bytecode cache).
+static int vma_trace_hits_file(addr_t addr, addr_t len) {
+    extern char *getenv(const char *);
+    if (!getenv("ISH_VMA_TRACE")) return 0;
+    addr_t end = addr + len;
+    int found = 0;
+    read_wrlock(&current->mem->lock);
+    for (addr_t p = addr; p < end && !found; p += PAGE_SIZE) {
+        struct pt_entry *pt = mem_pt(current->mem, PAGE(p));
+        if (pt != NULL && !(pt->flags & P_ANONYMOUS) &&
+                pt->data != NULL && pt->data->fd != NULL)
+            found = 1;
+    }
+    read_wrunlock(&current->mem->lock);
+    return found;
+}
+
 int_t sys_munmap(addr_t addr, addr_t len) {
     STRACE("munmap(0x%llx, 0x%llx)", (unsigned long long)addr, (unsigned long long)len);
+    if (vma_trace_hits_file(addr, len))
+        fprintf(stderr, "[vma] munmap(0x%llx, 0x%llx) [file-backed] pid=%d\n",
+                (unsigned long long)addr, (unsigned long long)len, current->pid);
     if (getenv("ISH_PROT_TRACE")) {
         addr_t end = addr + len;
         if (end > 0xed000000ULL && addr < 0xf0000000ULL) {
@@ -324,6 +346,9 @@ int_t sys_mprotect(addr_t addr, addr_t len, int_t prot) {
                     (unsigned long long)addr, (unsigned long long)len, prot);
         }
     }
+    if (vma_trace_hits_file(addr, len))
+        fprintf(stderr, "[vma] mprotect(0x%llx, 0x%llx, prot=0x%x) [file-backed] pid=%d\n",
+                (unsigned long long)addr, (unsigned long long)len, prot, current->pid);
     if (PGOFFSET(addr) != 0)
         return _EINVAL;
     if (prot & ~P_RWX)
@@ -337,6 +362,9 @@ int_t sys_mprotect(addr_t addr, addr_t len, int_t prot) {
 
 dword_t sys_madvise(addr_t addr, dword_t len, dword_t advice) {
     STRACE("madvise(0x%llx, 0x%x, %d)", (unsigned long long)addr, len, advice);
+    if (advice == 4 && vma_trace_hits_file(addr, len))
+        fprintf(stderr, "[vma] madvise(0x%llx, 0x%x, DONTNEED) [file-backed] pid=%d\n",
+                (unsigned long long)addr, len, current->pid);
     if (PGOFFSET(addr) != 0)
         return _EINVAL;
     // Linux returns ENOMEM if any page in the range is not part of a mapping.
@@ -380,16 +408,35 @@ dword_t sys_madvise(addr_t addr, dword_t len, dword_t advice) {
             return 0;
     }
     if (advice == 4 /* MADV_DONTNEED */) {
-        // MADV_DONTNEED: the next access must see zero-fill. Zeroing the host
-        // backing in place is only safe if concurrent readers on other threads
-        // re-check coherence — so bump mmu->changes (via mem_changed) so their
-        // per-block / per-access TLB coherence check forces a re-translate
-        // rather than reading the half-zeroed page through a stale entry.
+        // MADV_DONTNEED semantics differ by mapping type:
+        //   - ANONYMOUS private: the next access must see zero-fill. We zero
+        //     the backing in place.
+        //   - FILE-BACKED private (MAP_PRIVATE over a file): DONTNEED discards
+        //     the private (CoW) copy so the NEXT access re-reads the ORIGINAL
+        //     FILE CONTENTS — NOT zero. bun does exactly this to reclaim the
+        //     physical pages of its embedded bytecode cache (.bun section, a
+        //     164MB MAP_PRIVATE file mapping) after decoding, expecting the
+        //     bytes to transparently page back in. Zeroing them here corrupted
+        //     the cache mid-decode → UnlinkedCodeBlock numCalleeLocals read as
+        //     0 → llint prologue stack-frame underflow → SIGSEGV (the
+        //     claude-cli crash). For a private file mapping whose pages we
+        //     haven't diverged from the file (the common read-only case), the
+        //     file contents are already present in the backing, so restoring
+        //     original file content is a no-op — safest is to leave them.
         addr_t end = addr + len;
         bool any = false;
         for (addr_t p = addr; p < end; p += PAGE_SIZE) {
             write_wrlock(&current->mem->lock);
-            if (mem_pt(current->mem, PAGE(p)) == NULL) {
+            struct pt_entry *pt = mem_pt(current->mem, PAGE(p));
+            if (pt == NULL) {
+                write_wrunlock(&current->mem->lock);
+                continue;
+            }
+            // File-backed page: preserve contents (next access must see file
+            // data, not zeros). Skip the zeroing entirely.
+            bool file_backed = !(pt->flags & P_ANONYMOUS) &&
+                               pt->data != NULL && pt->data->fd != NULL;
+            if (file_backed) {
                 write_wrunlock(&current->mem->lock);
                 continue;
             }
