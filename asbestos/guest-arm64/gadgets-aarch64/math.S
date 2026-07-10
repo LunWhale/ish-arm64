@@ -1311,9 +1311,13 @@ and_imm_store_result:
 3:  and x17, x17, #0xffffffff
 4:
     cmp x10, #31
-    b.eq 5f
+    b.eq 6f
     str x17, [x14, x10, lsl #3]
-5:  gret
+    gret
+6:  // rd=31 for ORR (immediate): writes SP, not XZR (only ANDS uses XZR).
+    and x17, x17, #0xffffffffffff   // Mask to 48-bit address space
+    str x17, [_cpu, #CPU_sp]
+    gret
 
 .gadget eor_imm
     ldr x8, [_pc]
@@ -1340,9 +1344,13 @@ and_imm_store_result:
 3:  and x17, x17, #0xffffffff
 4:
     cmp x10, #31
-    b.eq 5f
+    b.eq 6f
     str x17, [x14, x10, lsl #3]
-5:  gret
+    gret
+6:  // rd=31 for EOR (immediate): writes SP, not XZR (only ANDS uses XZR).
+    and x17, x17, #0xffffffffffff   // Mask to 48-bit address space
+    str x17, [_cpu, #CPU_sp]
+    gret
 
 /*
  * EXTR - Extract register (concatenate and shift)
