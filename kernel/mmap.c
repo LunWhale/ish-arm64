@@ -419,6 +419,69 @@ int_t sys_msync(addr_t UNUSED(addr), dword_t UNUSED(len), int_t UNUSED(flags)) {
     return 0;
 }
 
+// membarrier(2). JSC's concurrent JIT and WTF's parking-lot use this to make
+// their sequentially-consistent-fence-free fast paths safe: they omit the
+// per-thread barrier on the common path and issue a process-wide barrier via
+// membarrier on the slow path (RegisterState publish, GC handshake). Without
+// it (our old ENOSYS stub) JSC has no fallback that works, and a compiler
+// thread can publish a half-decoded UnlinkedCodeBlock that the main thread
+// then reads as zeros — the claude-cli numCalleeLocals=0 crash.
+//
+// In iSH every guest thread is a native host thread over shared native
+// memory, so a real host barrier here plus the ordering already present on
+// the OTHER threads' next memory op gives the required guarantee. The
+// EXPEDITED variants are synchronous: the caller must observe all other
+// threads' prior accesses. We approximate this by a strong host fence; on the
+// ARM64/x86 hosts iSH targets this is a full DMB ISH / MFENCE, which — paired
+// with the fact that reader threads re-load through the TLB with acquire
+// semantics — is sufficient. QUERY reports the commands we support.
+#define MEMBARRIER_CMD_QUERY                     0
+#define MEMBARRIER_CMD_GLOBAL                    (1 << 0)
+#define MEMBARRIER_CMD_GLOBAL_EXPEDITED          (1 << 1)
+#define MEMBARRIER_CMD_REGISTER_GLOBAL_EXPEDITED (1 << 2)
+#define MEMBARRIER_CMD_PRIVATE_EXPEDITED         (1 << 3)
+#define MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED (1 << 4)
+#define MEMBARRIER_CMD_PRIVATE_EXPEDITED_SYNC_CORE (1 << 5)
+#define MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED_SYNC_CORE (1 << 6)
+
+int_t sys_membarrier(int_t cmd, uint_t flags, int_t UNUSED(cpu_id)) {
+    STRACE("membarrier(%d, 0x%x)", cmd, flags);
+    if (getenv("ISH_MEMBARRIER_TRACE"))
+        fprintf(stderr, "[membarrier] pid=%d cmd=%d flags=0x%x\n",
+                current->pid, cmd, flags);
+    switch (cmd) {
+        case MEMBARRIER_CMD_QUERY:
+            // Advertise the private/global expedited commands + registration.
+            return MEMBARRIER_CMD_GLOBAL
+                 | MEMBARRIER_CMD_GLOBAL_EXPEDITED
+                 | MEMBARRIER_CMD_REGISTER_GLOBAL_EXPEDITED
+                 | MEMBARRIER_CMD_PRIVATE_EXPEDITED
+                 | MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED
+                 | MEMBARRIER_CMD_PRIVATE_EXPEDITED_SYNC_CORE
+                 | MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED_SYNC_CORE;
+
+        // Registration commands: nothing to set up (any thread may issue the
+        // expedited barrier). Native Linux requires prior registration, so
+        // JSC always calls these first; return success.
+        case MEMBARRIER_CMD_REGISTER_GLOBAL_EXPEDITED:
+        case MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED:
+        case MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED_SYNC_CORE:
+            return 0;
+
+        // Barrier commands: issue a real process-wide-strength host fence.
+        case MEMBARRIER_CMD_GLOBAL:
+        case MEMBARRIER_CMD_GLOBAL_EXPEDITED:
+        case MEMBARRIER_CMD_PRIVATE_EXPEDITED:
+        case MEMBARRIER_CMD_PRIVATE_EXPEDITED_SYNC_CORE:
+            __atomic_thread_fence(__ATOMIC_SEQ_CST);
+            __sync_synchronize();
+            return 0;
+
+        default:
+            return _EINVAL;
+    }
+}
+
 addr_t sys_brk(addr_t new_brk) {
     STRACE("brk(0x%x)", new_brk);
     struct mm *mm = current->mm;
