@@ -317,7 +317,14 @@ static int proc_pid_fd_readlink(struct proc_entry *entry, char *buf) {
         return _ESRCH;
     lock(&task->files->lock);
     struct fd *fd = fdtable_get(task->files, entry->fd);
-    int err = generic_getpath(fd, buf);
+    // fd may be NULL: another thread can close the descriptor between the
+    // proc lookup and here (bun's worker pool churns fds during startup).
+    // generic_getpath would then deref fd->mount and crash the host.
+    int err;
+    if (fd == NULL)
+        err = _ENOENT;
+    else
+        err = generic_getpath(fd, buf);
     unlock(&task->files->lock);
     proc_put_task(task);
     return err;
