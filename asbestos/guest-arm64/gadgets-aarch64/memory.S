@@ -3259,15 +3259,27 @@ ldxp_c_64:
     bl NAME(c_ldp64)
 ldxp_c_done:
     mov w19, w0                  // save result
-    ldr x20, [sp]               // val1
+    // Load outputs with the right width: c_ldp32 writes 32-bit values into
+    // the 8-byte slots, whose upper halves are uninitialized stack garbage.
+    cmp x26, #3
+    b.eq 5f
+    ldr w20, [sp]               // val1 (32-bit, zero-extended)
+    ldr w21, [sp, #8]           // val2
+    b 6f
+5:  ldr x20, [sp]               // val1 (64-bit)
     ldr x21, [sp, #8]           // val2
-    add sp, sp, #16
+6:  add sp, sp, #16
     restore_c
     mov _addr, x24               // restore _addr
 
     // Check for segfault
     cmn w19, #1
     b.eq ldxp_c_segfault
+
+    // Arm the exclusive monitor with the loaded pair so STXP can CAS on it.
+    str x24, [_cpu, #CPU_excl_addr]
+    str x20, [_cpu, #CPU_excl_val]
+    str x21, [_cpu, #CPU_excl_val2]
 
     // Store to Rt
     add x9, _cpu, #CPU_x0
@@ -3282,6 +3294,93 @@ ldxp_c_done:
 ldxp_c_segfault:
     str x24, [_cpu, #CPU_segfault_addr]
     strb wzr, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+
+/*
+ * STXP via C helper — a TRUE atomic pair-exclusive store.
+ * Code stream: [gadget addr][rt | (rt2 << 8) | (rs << 16) | (size << 24)]
+ * Expects _addr = guest address (from calc_addr_imm).
+ * Checks the exclusive monitor armed by LDXP, then CASes the whole pair
+ * (64-bit CAS for W pairs, 128-bit CAS for X pairs) against the loaded
+ * values. Rs = 0 on success, 1 on failure. Never a plain store: emulating
+ * STXP as store-pair+always-success tears lock-free algorithms under
+ * threads (observed: JSC concurrent-JIT CodeBlock corruption in bun).
+ */
+.gadget stxp_c
+    ldr x22, [_pc]
+    add _pc, _pc, #8
+    and x23, x22, #0x1f         // rt
+    ubfx x25, x22, #8, #5       // rt2
+    ubfx x27, x22, #16, #5      // rs
+    ubfx x26, x22, #24, #2      // size
+    mov x24, _addr               // save guest address
+
+    // Check exclusive monitor: does excl_addr match current address?
+    ldr x8, [_cpu, #CPU_excl_addr]
+    cmp x8, _addr
+    b.ne stxp_c_fail
+
+    // Load new values from Rt / Rt2 (XZR reads as 0)
+    add x12, _cpu, #CPU_x0
+    cmp x23, #31
+    b.eq 1f
+    ldr x13, [x12, x23, lsl #3]
+    b 2f
+1:  mov x13, #0
+2:  cmp x25, #31
+    b.eq 3f
+    ldr x14, [x12, x25, lsl #3]
+    b 4f
+3:  mov x14, #0
+4:
+    save_c
+    // Argument setup order matters: x0 derives from _tlb (x2) and the
+    // expected values load via _cpu (x1), so fill x1/x2 args last.
+    sub x0, _tlb, #TLB_entries      // arg0: tlb struct pointer
+    ldr x3, [_cpu, #CPU_excl_val2]  // arg3: expected val2 (from LDXP)
+    mov x4, x13                     // arg4: new val1 (Rt)
+    mov x5, x14                     // arg5: new val2 (Rt2)
+    mov w6, w26                     // arg6: size
+    ldr x2, [_cpu, #CPU_excl_val]   // arg2: expected val1 (clobbers _tlb)
+    mov x1, x24                     // arg1: guest address (clobbers _cpu)
+    bl NAME(c_stxp_cas)
+    mov w19, w0                  // 0=success, 1=fail, -1=segfault
+    restore_c
+    mov _addr, x24
+
+    cmn w19, #1
+    b.eq stxp_c_segfault
+
+    // Invalidate exclusive monitor
+    movn x8, #0
+    str x8, [_cpu, #CPU_excl_addr]
+
+    // Rs = result (0 or 1)
+    cmp x27, #31
+    b.eq 5f
+    add x9, _cpu, #CPU_x0
+    and x8, x19, #0xff
+    str x8, [x9, x27, lsl #3]
+5:  gret
+
+stxp_c_fail:
+    // Monitor mismatch — store failed
+    movn x8, #0
+    str x8, [_cpu, #CPU_excl_addr]
+    cmp x27, #31
+    b.eq 6f
+    add x9, _cpu, #CPU_x0
+    mov x8, #1
+    str x8, [x9, x27, lsl #3]
+6:  gret
+
+stxp_c_segfault:
+    movn x8, #0
+    str x8, [_cpu, #CPU_excl_addr]
+    str x24, [_cpu, #CPU_segfault_addr]
+    mov w8, #1
+    strb w8, [_cpu, #CPU_segfault_was_write]
     mov w0, #INT_GPF
     b fiber_exit
 

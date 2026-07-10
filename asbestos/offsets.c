@@ -97,6 +97,7 @@ void cpu() {
     // Exclusive monitor
     OFFSET(CPU, cpu_state, excl_addr);
     OFFSET(CPU, cpu_state, excl_val);
+    OFFSET(CPU, cpu_state, excl_val2);
 
     // Cycle counter (for timer interrupts in chained blocks)
     OFFSET(CPU, cpu_state, cycle);

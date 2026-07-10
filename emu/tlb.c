@@ -518,6 +518,40 @@ __no_instrument int c_stxr_cas(struct tlb *tlb, addr_t addr,
     }
 }
 
+// STXP atomic compare-and-swap helper for LDXP/STXP pair-exclusive emulation.
+// A pair-exclusive store must atomically write BOTH registers only if memory
+// still holds the pair loaded by LDXP — emulating it as a plain store pair
+// that always "succeeds" tears lock-free algorithms (e.g. libpas versioned
+// fields via __atomic_compare_exchange_16 outline fallbacks) under threads.
+// size: 2 = 32-bit pair (one 64-bit CAS), 3 = 64-bit pair (one 128-bit CAS).
+// Returns 0 on CAS success, 1 on CAS failure, -1 on segfault/misaligned.
+__no_instrument int c_stxp_cas(struct tlb *tlb, addr_t addr,
+                               uint64_t exp1, uint64_t exp2,
+                               uint64_t new1, uint64_t new2, uint32_t size) {
+    if (size == 2) {
+        uint64_t exp = (uint32_t)exp1 | ((uint64_t)(uint32_t)exp2 << 32);
+        uint64_t des = (uint32_t)new1 | ((uint64_t)(uint32_t)new2 << 32);
+        void *ptr = __tlb_write_ptr(tlb, addr);
+        if (ptr == NULL)
+            return -1;
+        return __atomic_compare_exchange_n((uint64_t *)ptr, &exp, des,
+                                           false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST) ? 0 : 1;
+    }
+    if (size != 3)
+        return -1;
+    // 16-byte access must not straddle a page (STXP requires 16-byte alignment
+    // anyway; unaligned pair exclusives fault on real hardware).
+    if (PGOFFSET(addr) > PAGE_SIZE - 16)
+        return -1;
+    void *ptr = __tlb_write_ptr(tlb, addr);
+    if (ptr == NULL)
+        return -1;
+    __uint128_t exp = ((__uint128_t)exp2 << 64) | (__uint128_t)exp1;
+    __uint128_t des = ((__uint128_t)new2 << 64) | (__uint128_t)new1;
+    return __atomic_compare_exchange_n((__uint128_t *)ptr, &exp, des,
+                                       false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST) ? 0 : 1;
+}
+
 // LDP/STP helper functions for pair loads/stores
 // Return: 0 on success, -1 on segfault
 __no_instrument int c_ldp64(struct tlb *tlb, addr_t addr, uint64_t *val1, uint64_t *val2) {

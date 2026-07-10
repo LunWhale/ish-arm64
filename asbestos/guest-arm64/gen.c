@@ -3117,24 +3117,19 @@ static int gen_ldst(struct gen_state *state, uint32_t insn) {
                 gen(state, rt | ((uint64_t)rt2 << 8) | ((uint64_t)size << 16));
                 if (o0) gen(state, (unsigned long) gadget_dmb);  // LDAXP: acquire
             } else {
-                if (o0) gen(state, (unsigned long) gadget_dmb);  // STLXP: release
-                // STXP/STLXP - Store pair
-                void (*stp_gadget)(void) = NULL;
-                switch (size) {
-                case 2: stp_gadget = gadget_stp32; break;
-                case 3: stp_gadget = gadget_stp64; break;
-                default:
+                // STXP/STLXP — must be a TRUE atomic pair CAS against the
+                // values loaded by LDXP. Emulating it as a plain store pair
+                // that always reports success tears lock-free algorithms
+                // (128-bit __atomic_compare_exchange fallbacks) under threads.
+                if (size != 2 && size != 3) {
                     gen_interrupt(state, INT_UNDEFINED);
                     return 0;
                 }
-                gen(state, (unsigned long) stp_gadget);
-                gen(state, rt | ((uint64_t)rt2 << 8));
-
-                // Set Rs = 0 to indicate success
-                if (rs != 31) {
-                    gen(state, (unsigned long) gadget_movz);
-                    gen(state, rs | (0 << 8) | (0ULL << 16) | (0ULL << 32));
-                }
+                if (o0) gen(state, (unsigned long) gadget_dmb);  // STLXP: release
+                extern void gadget_stxp_c(void);
+                gen(state, (unsigned long) gadget_stxp_c);
+                gen(state, rt | ((uint64_t)rt2 << 8) | ((uint64_t)rs << 16) |
+                        ((uint64_t)size << 24));
             }
             return 1;
         }
