@@ -60,7 +60,7 @@ int_t sys_epoll_ctl(fd_t epoll_f, int_t op, fd_t f, addr_t event_addr) {
         return _EPERM;
 
     if (op == EPOLL_CTL_DEL_)
-        return poll_del_fd(epoll->epollfd.poll, fd);
+        return poll_del_fd(epoll->epollfd.poll, fd, f);
 
     struct epoll_event_ event;
     if (user_get(event_addr, event))
@@ -68,11 +68,11 @@ int_t sys_epoll_ctl(fd_t epoll_f, int_t op, fd_t f, addr_t event_addr) {
     STRACE(" {events: %#x, data: %#x}", event.events, event.data);
 
     if (op == EPOLL_CTL_ADD_) {
-        if (poll_has_fd(epoll->epollfd.poll, fd))
+        if (poll_has_fd(epoll->epollfd.poll, fd, f))
             return _EEXIST;
-        return poll_add_fd(epoll->epollfd.poll, fd, event.events, (union poll_fd_info) event.data);
+        return poll_add_fd(epoll->epollfd.poll, fd, f, event.events, (union poll_fd_info) event.data);
     } else {
-        return poll_mod_fd(epoll->epollfd.poll, fd, event.events, (union poll_fd_info) event.data);
+        return poll_mod_fd(epoll->epollfd.poll, fd, f, event.events, (union poll_fd_info) event.data);
     }
 }
 

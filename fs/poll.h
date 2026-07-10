@@ -33,6 +33,14 @@ struct poll {
 struct poll_fd {
     // locked by containing struct poll
     struct fd *fd;
+    // Guest fd number this registration was made with. Linux keys epoll
+    // registrations on the (fd number, open file description) PAIR: two
+    // different fd numbers referring to the same description (dup) may both
+    // be registered in one epoll set. Matching on struct fd alone returned
+    // a false EEXIST for that case (observed with bun, which dups stdout
+    // and stderr — sharing one description after the shell's dup2(1,2) —
+    // and registers both dups in its event loop).
+    int fd_no;
     struct list fds;
     int types;
     union poll_fd_info {
@@ -71,10 +79,12 @@ struct poll_event {
     int types;
 };
 struct poll *poll_create(void);
-bool poll_has_fd(struct poll *poll, struct fd *fd);
-int poll_add_fd(struct poll *poll, struct fd *fd, int types, union poll_fd_info info);
-int poll_mod_fd(struct poll *poll, struct fd *fd, int types, union poll_fd_info info);
-int poll_del_fd(struct poll *poll, struct fd *fd);
+// Registrations are keyed on the (guest fd number, struct fd) pair to match
+// Linux epoll semantics; fd_no is the guest fd number the caller used.
+bool poll_has_fd(struct poll *poll, struct fd *fd, int fd_no);
+int poll_add_fd(struct poll *poll, struct fd *fd, int fd_no, int types, union poll_fd_info info);
+int poll_mod_fd(struct poll *poll, struct fd *fd, int fd_no, int types, union poll_fd_info info);
+int poll_del_fd(struct poll *poll, struct fd *fd, int fd_no);
 // Indicates that the specified events have been triggered. Each call will
 // generate a new edge-triggered notification.
 // please do not call this while holding any locks you would acquire in your poll operation
