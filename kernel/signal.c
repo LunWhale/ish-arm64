@@ -507,7 +507,18 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
     current->cpu.eip = sighand->action[info->sig].handler;
     dword_t sp = current->cpu.esp;
 #endif
-    if (sighand->altstack && !is_on_altstack(sp, sighand)) {
+    // Only switch to the alternate signal stack when the handler was
+    // registered with SA_ONSTACK. iSH previously switched whenever an altstack
+    // existed at all, ignoring the flag — that put EVERY handler on the
+    // altstack. JSC's GC installs an altstack (for SIGSEGV) but registers its
+    // SIGPWR thread-suspend handler WITHOUT SA_ONSTACK: that handler compares
+    // the interrupted sp against the thread's own stack bounds to decide
+    // whether to actually suspend (sem_post + sigsuspend) or bail. Running it
+    // on the altstack made sp fall outside those bounds, so the handler took
+    // the bail path and never parked — the GC suspender then re-signalled
+    // forever (the claude-cli startup deadlock).
+    if ((action->flags & SA_ONSTACK_) && sighand->altstack &&
+            !is_on_altstack(sp, sighand)) {
         sp = sighand->altstack + sighand->altstack_size;
     }
     if (xsave_extra) {

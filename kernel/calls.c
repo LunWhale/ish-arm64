@@ -134,20 +134,21 @@ void handle_interrupt(int interrupt) {
                 // pid, number, the 6 args, and the return value.
                 static int systrace = -1;
                 if (systrace == -1) { const char *e = getenv("ISH_SYSTRACE"); systrace = (e && e[0]=='1') ? 1 : 0; }
-                if (systrace) {
-                    struct timespec _t; clock_gettime(CLOCK_MONOTONIC, &_t);
-                    fprintf(stderr, "[sc] %ld.%06ld pid=%d n=%d(%llx,%llx,%llx,%llx,%llx,%llx)",
-                            (long)_t.tv_sec, _t.tv_nsec/1000, current->pid, syscall_num,
-                            (unsigned long long)cpu->regs[0], (unsigned long long)cpu->regs[1],
-                            (unsigned long long)cpu->regs[2], (unsigned long long)cpu->regs[3],
-                            (unsigned long long)cpu->regs[4], (unsigned long long)cpu->regs[5]);
-                }
+                uint64_t _a0=cpu->regs[0],_a1=cpu->regs[1],_a2=cpu->regs[2],
+                         _a3=cpu->regs[3],_a4=cpu->regs[4],_a5=cpu->regs[5];
+                struct timespec _t0; if(systrace) clock_gettime(CLOCK_MONOTONIC, &_t0);
                 int64_t result = syscall_table[syscall_num](
                     cpu->regs[0], cpu->regs[1], cpu->regs[2],
                     cpu->regs[3], cpu->regs[4], cpu->regs[5]);
                 STRACE(" = 0x%llx\n", (unsigned long long)result);
+                // Single atomic fprintf so multi-thread output does not
+                // interleave the args line with another thread's return value.
                 if (systrace)
-                    fprintf(stderr, " = 0x%llx\n", (unsigned long long)result);
+                    fprintf(stderr, "[sc] %ld.%06ld pid=%d n=%d(%llx,%llx,%llx,%llx,%llx,%llx) = 0x%llx\n",
+                            (long)_t0.tv_sec, _t0.tv_nsec/1000, current->pid, syscall_num,
+                            (unsigned long long)_a0,(unsigned long long)_a1,(unsigned long long)_a2,
+                            (unsigned long long)_a3,(unsigned long long)_a4,(unsigned long long)_a5,
+                            (unsigned long long)result);
                 // SA_RESTART: mark this syscall restartable if it was
                 // interrupted (EINTR). receive_signals will rewind PC if the
                 // delivered signal's handler has SA_RESTART. Restricted to
