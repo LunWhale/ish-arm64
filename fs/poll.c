@@ -233,6 +233,20 @@ void poll_cleanup_fd(struct fd *fd) {
     unlock(&fd->poll_lock);
 }
 
+// Diagnostic: dump each member fd of a poll set with its current poll state.
+void poll_dump_members(struct poll *poll) {
+    lock(&poll->lock);
+    struct poll_fd *poll_fd;
+    list_for_each_entry(&poll->poll_fds, poll_fd, fds) {
+        struct fd *fd = poll_fd->fd;
+        int ready = (fd->ops && fd->ops->poll) ? fd->ops->poll(fd) : -1;
+        fprintf(stderr, "  [epoll-member] fd_no=%d type=%#x want=%#x ready=%#x triggered=%#x real_fd=%d\n",
+                poll_fd->fd_no, fd->type, poll_fd->types, ready,
+                poll_fd->triggered_types, fd->real_fd);
+    }
+    unlock(&poll->lock);
+}
+
 void poll_wakeup(struct fd *fd, int events) {
     struct poll_fd *poll_fd;
     lock(&fd->poll_lock);

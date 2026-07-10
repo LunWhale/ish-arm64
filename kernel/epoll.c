@@ -109,6 +109,18 @@ int_t sys_epoll_wait(fd_t epoll_f, addr_t events_addr, int_t max_events, int_t t
 
     struct epoll_context context = {.events = events, .n = 0, .max_events = max_events};
     STRACE("...\n");
+    { extern char *getenv(const char *);
+      static addr_t wa = 1;
+      if (wa == 1) { const char *e = getenv("ISH_EPOLL_WATCH_MUTEX"); wa = e ? strtoull(e,NULL,16) : 0; }
+      if (wa) {
+          dword_t mv = 0; dword_t *vp = mem_ptr(current->mem, wa, MEM_READ); if (vp) mv = *vp;
+          if (mv != 0) {  // only log when the watched mutex is held
+              fprintf(stderr, "[epoll] pid=%d enters epoll_wait timeout=%d while mutex 0x%llx = 0x%x; members:\n",
+                      current->pid, timeout, (unsigned long long)wa, mv);
+              extern void poll_dump_members(struct poll *p);
+              poll_dump_members(epoll->epollfd.poll);
+          }
+      } }
     int res = poll_wait(epoll->epollfd.poll, epoll_callback, &context, timeout < 0 ? NULL : &timeout_ts);
     STRACE("%d end epoll_wait", current->pid);
     if (res >= 0) {
