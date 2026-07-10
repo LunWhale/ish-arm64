@@ -1,6 +1,7 @@
 #ifndef EMU_GEN_H
 #define EMU_GEN_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "asbestos/asbestos.h"
@@ -20,7 +21,7 @@ struct gen_state {
     unsigned b_follow_depth; // how many unconditional B's we've followed inline
 };
 
-void gen_start(addr_t addr, struct gen_state *state);
+bool gen_start(addr_t addr, struct gen_state *state);
 void gen_exit(struct gen_state *state);
 void gen_end(struct gen_state *state);
 

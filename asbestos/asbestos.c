@@ -484,7 +484,8 @@ static struct fiber_block *fiber_block_compile(addr_t ip, struct tlb *tlb) {
     ISH_SIGNPOST_SCOPE_BEGIN(jit, "block_compile", _bc_spid);
     struct gen_state state;
     TRACE("%d %08x --- compiling:\n", current_pid(), ip);
-    gen_start(ip, &state);
+    if (!gen_start(ip, &state))
+        return NULL;
 #ifdef GUEST_ARM64
     // Pre-built gadget offload (ARM64 only): if a native spec_fn is registered for
     // this function entry, emit one prebuilt gadget covering the whole function
@@ -554,6 +555,8 @@ static struct fiber_block *fiber_block_compile_protected(struct asbestos *asbest
             atomic_fetch_add_explicit(&st_wx_marks, 1, memory_order_relaxed);
         uint64_t gen = __atomic_load_n(&mmu->changes, __ATOMIC_ACQUIRE);
         struct fiber_block *block = fiber_block_compile(ip, tlb);
+        if (block == NULL)
+            return NULL;
         bool crossed = PAGE(ip) != PAGE(block->end_addr);
         if (crossed && mmu_mark_code_page(mmu, PAGE(block->end_addr)) > 0) {
             // Tail page was unprotected while we read it; now that it's
@@ -790,6 +793,13 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
                     (no_jit_reuse && ip >= 0xc0000000ULL && ip < 0xe0000000ULL)) {
                 lock(&asbestos->lock);
                 block = fiber_block_compile(ip, tlb);
+                if (block == NULL) {
+                    unlock(&asbestos->lock);
+                    interrupt = INT_GPF;
+                    frame->cpu.segfault_addr = 0;
+                    frame->cpu.segfault_was_write = 0;
+                    break;
+                }
                 fiber_insert(asbestos, block);
                 unlock(&asbestos->lock);
             } else
@@ -806,6 +816,13 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 #else
                     block = fiber_block_compile(ip, tlb);
 #endif
+                    if (block == NULL) {
+                        unlock(&asbestos->lock);
+                        interrupt = INT_GPF;
+                        frame->cpu.segfault_addr = 0;
+                        frame->cpu.segfault_was_write = 0;
+                        break;
+                    }
                     fiber_insert(asbestos, block);
                     if (stage_trace_on())
                         atomic_fetch_add_explicit(&st_block_compile, 1, memory_order_relaxed);
@@ -985,7 +1002,8 @@ static int cpu_step_to_interrupt(struct cpu_state *cpu, struct tlb *tlb) {
 
 static int cpu_single_step(struct cpu_state *cpu, struct tlb *tlb) {
     struct gen_state state;
-    gen_start(CPU_IP(cpu), &state);
+    if (!gen_start(CPU_IP(cpu), &state))
+        return INT_GPF;
     gen_step(&state, tlb);
     gen_exit(&state);
     gen_end(&state);
