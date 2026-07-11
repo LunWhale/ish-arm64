@@ -180,29 +180,26 @@ static inline void __write_wrlock(wrlock_t *lock, const char *file, int line) {
     // keeps readers live so they can progress and release, letting the writer
     // eventually win a trylock.
     //
-    // But an UNBOUNDED trylock-spin has its own failure mode: if readers are
-    // continuously present (busy multi-threaded JIT), trywrlock never sees zero
-    // readers, so the writer can spin forever burning a full core and never
-    // make progress (livelock/starvation). So: spin with a growing backoff for
-    // a bounded number of attempts to catch the common short-lived-reader case
-    // without queuing; if that cap is exceeded, fall back to a BLOCKING wrlock
-    // so the writer is guaranteed forward progress. The blocking wait is
-    // writer-preferring on macOS (it will freeze new readers), which is exactly
-    // the behavior we were avoiding — but only as a last resort after the
-    // non-blocking window failed, which bounds the risk to genuinely
-    // long-contended locks rather than every acquisition.
-    struct timespec _ts = {0, 1000}; // 1us initial backoff
-    int _spins = 0;
+    // We must NEVER fall back to a blocking pthread_rwlock_wrlock here. That is
+    // writer-preferring on macOS/iOS: the moment this thread queues as a waiter,
+    // every subsequent reader blocks until we run — and if we (the writer, e.g.
+    // JSC's GC doing an mmap/munmap sweep) are ourselves waiting for those
+    // reader threads to reach a GC safepoint, the whole VM deadlocks. That is
+    // exactly the intermittent claude/bun startup hang this trylock-spin exists
+    // to prevent. It reproduces far more easily on-device (iOS): slower cores
+    // mean JIT readers hold mem->lock across a longer quantum, so any bounded
+    // spin budget is more likely to be exhausted and hit the blocking fallback.
+    //
+    // The original concern with an unbounded trylock-spin was burning a full
+    // core (livelock) while readers are continuously present. We avoid that
+    // WITHOUT ever blocking: back off to a steady sleep so the spinning writer
+    // yields the CPU each iteration (it is not a busy-spin), and readers keep
+    // making progress and releasing until the writer wins a trylock. This keeps
+    // forward progress for readers guaranteed and the writer non-blocking.
+    struct timespec _ts = {0, 1000}; // 1us initial backoff, grows to a steady sleep
     while (pthread_rwlock_trywrlock(&lock->l) != 0) {
-        if (++_spins > 10000) {
-            // ~tens of ms of spinning elapsed without a reader-free window;
-            // stop burning CPU and block until the lock is ours.
-            if (pthread_rwlock_wrlock(&lock->l) != 0)
-                __builtin_trap();
-            break;
-        }
         nanosleep(&_ts, NULL);
-        if (_ts.tv_nsec < 100000) // cap backoff at 100us
+        if (_ts.tv_nsec < 100000) // ramp up to a 100us steady sleep (yields CPU)
             _ts.tv_nsec *= 2;
     }
     assert(lock->val == 0);
