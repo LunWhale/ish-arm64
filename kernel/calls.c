@@ -84,6 +84,11 @@ void handle_interrupt(int interrupt) {
         // can be re-executed if a SA_RESTART signal is delivered.
         current->syscall_restart_num = syscall_num;
         current->syscall_restart_arg0 = cpu->regs[0];
+        // The svc gadget already advanced cpu.pc to the instruction after the
+        // svc. Record it so the SA_RESTART rewind can verify PC is still exactly
+        // here (i.e. we really are delivering a signal for THIS interrupted
+        // syscall) before doing pc -= 4.
+        current->syscall_restart_pc = cpu->pc;
         current->syscall_restartable = false;
 
         // === FAST PATH: Hot syscalls ===

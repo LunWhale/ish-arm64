@@ -479,7 +479,16 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
     // re-executes instead of surfacing EINTR. Load-bearing for JSC's SIGPWR
     // GC-safepoint handshake, which registers SA_RESTART and otherwise
     // livelocks re-signalling a thread whose futex keeps returning EINTR.
-    if ((action->flags & SA_RESTART_) && current->syscall_restartable) {
+    // syscall_restartable is a sticky flag: it stays set if an earlier EINTR
+    // futex/epoll/read/write delivered a signal whose handler lacked SA_RESTART
+    // (no rewind happened). Guarding the rewind on the flag alone is unsafe —
+    // a later non-syscall interrupt (INT_TIMER every ~1024 blocks, INT_GPF on
+    // demand-map/CoW) runs receive_signals() too, and if a NEW SA_RESTART signal
+    // is pending it would rewind PC into the middle of ordinary code. Require
+    // cpu.pc to still equal the interrupted syscall's return PC (svc_addr+4), so
+    // the rewind can only fire when we truly are just past that svc.
+    if ((action->flags & SA_RESTART_) && current->syscall_restartable &&
+            current->cpu.pc == current->syscall_restart_pc) {
         current->cpu.pc -= 4;
         current->cpu.regs[0] = current->syscall_restart_arg0;
         current->syscall_restartable = false;

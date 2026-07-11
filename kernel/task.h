@@ -86,6 +86,10 @@ struct task {
     // registers SA_RESTART) livelocks on a futex that keeps returning EINTR.
     unsigned syscall_restart_num;
     uint64_t syscall_restart_arg0;
+    uint64_t syscall_restart_pc; // cpu.pc at syscall entry (== svc_addr+4); the
+                                 // SA_RESTART rewind only fires when cpu.pc still
+                                 // equals this, so a stale syscall_restartable
+                                 // flag can't corrupt PC on a later interrupt.
     bool syscall_restartable; // this syscall returned EINTR and may restart
 
     // locked by pids_lock
