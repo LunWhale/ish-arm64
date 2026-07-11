@@ -107,6 +107,10 @@ suite_shell() {
     log "Shell benchmark (guest-side timing, startup excluded)"
     hr
 
+    # Purge stale blocking special files (see _purge_fakefs_special_files).
+    _purge_fakefs_special_files "$FAKEFS_X86" "x86"
+    _purge_fakefs_special_files "$FAKEFS_ARM64" "ARM64"
+
     # Push benchmark scripts + prebuilt binaries into both rootfs
     for asset in shellbench.sh cbench_lite.c; do
         [ -f "$ASSETS_DIR/$asset" ] || continue
@@ -578,9 +582,31 @@ _ensure_packages() {
     fi
 }
 
+# Remove any leftover host special files (FIFOs/sockets) from a fakefs data
+# tree. iSH's realfs_open passes guest opens straight to a host openat() with
+# no O_NONBLOCK, so a stale FIFO (e.g. a `/tmp/idle_fifo` left by a crashed
+# run) makes that open() block forever in an uninterruptible host state —
+# wedging the ish process (SIGKILL can't reap it) and, because it holds the
+# meta.db lock, every subsequent run too. Purge them before each suite so one
+# stale artifact can't cascade into a machine-wide hang.
+_purge_fakefs_special_files() {
+    local fs_path="$1" label="$2"
+    [ -d "$fs_path/data" ] || return 0
+    local n
+    n=$(find "$fs_path/data" \( -type p -o -type s \) 2>/dev/null | wc -l | tr -d ' ')
+    if [ "${n:-0}" -gt 0 ]; then
+        log "Purging $n leftover FIFO/socket node(s) from $label fakefs"
+        find "$fs_path/data" \( -type p -o -type s \) -delete 2>/dev/null || true
+    fi
+}
+
 suite_compat() {
     log "Compatibility tests (x86 vs ARM64)"
     hr
+
+    # Purge stale blocking special files before anything touches the fakefs.
+    _purge_fakefs_special_files "$FAKEFS_X86" "x86"
+    _purge_fakefs_special_files "$FAKEFS_ARM64" "ARM64"
 
     # Auto-install missing packages on both architectures
     _ensure_packages "$ISH_X86" -f "$FAKEFS_X86" "x86"
