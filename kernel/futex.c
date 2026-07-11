@@ -118,7 +118,16 @@ static int futex_load(struct futex *futex, dword_t *out) {
 // (0 when not in futex_wait). Read by the ISH_FUTEX_DBG dumper via pid map.
 #define FUTEX_DBG_MAX 64
 static struct { int pid; addr_t uaddr; dword_t val; } g_futex_waiters[FUTEX_DBG_MAX];
+// Gate the bookkeeping on ISH_FUTEX_DBG: without it, every futex_wait would run
+// a 64-entry linear scan on entry AND exit for no reason. JSC/Go hammer futex,
+// so keep this off the hot path unless the diagnostic is actually requested.
+static int g_futex_dbg = 0;
+__attribute__((constructor)) static void init_futex_dbg(void) {
+    g_futex_dbg = getenv("ISH_FUTEX_DBG") ? 1 : 0;
+}
 static void futex_dbg_set(int pid, addr_t uaddr, dword_t val) {
+    if (!g_futex_dbg)
+        return;
     for (int i = 0; i < FUTEX_DBG_MAX; i++) {
         if (g_futex_waiters[i].pid == pid || g_futex_waiters[i].pid == 0) {
             g_futex_waiters[i].pid = pid;

@@ -79,8 +79,14 @@ forceinline __no_instrument bool tlb_read(struct tlb *tlb, addr_t addr, void *ou
     return true;
 }
 
-// C-level write watchpoint: detect stores that bypass assembly write_prep
-#define ENABLE_C_WRITE_WATCHPOINT 1
+// C-level write watchpoint: detect stores that bypass assembly write_prep.
+// DIAGNOSTIC, OFF BY DEFAULT — when enabled it adds a volatile-global load +
+// branch to __tlb_write_ptr, the hottest path in the emulator (every guest
+// store). Leaving it compiled in makes store-heavy programs (bun/JSC) pay that
+// cost on every write, which is a real slowdown on-device. Uncomment only when
+// actively debugging a stray-store bug (mirrors ENABLE_WRITE_WATCHPOINT, the
+// assembly-side counterpart in gadgets.h, which is likewise off by default).
+// #define ENABLE_C_WRITE_WATCHPOINT 1
 extern volatile addr_t g_watch_page_val;
 extern volatile addr_t g_watch_pages[2];
 void c_watch_write_hit(addr_t addr, const char *caller);
