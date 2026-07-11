@@ -17,14 +17,6 @@ static struct fd_ops pidfd_ops;
 static struct list pidfd_list = LIST_INITIALIZER(pidfd_list);
 static lock_t pidfd_lock = LOCK_INITIALIZER;
 
-static bool pid_has_exited(pid_t_ pid) {
-    lock(&pids_lock);
-    struct task *task = pid_get_task_zombie(pid);
-    bool exited = (task == NULL) || task->zombie;
-    unlock(&pids_lock);
-    return exited;
-}
-
 int_t sys_pidfd_open(pid_t_ pid, uint_t flags) {
     STRACE("pidfd_open(%d, %#x)", pid, flags);
     // Only PIDFD_NONBLOCK (== O_NONBLOCK) is defined; iSH pidfds never block on
@@ -48,17 +40,25 @@ int_t sys_pidfd_open(pid_t_ pid, uint_t flags) {
     if (fd == NULL)
         return _ENOMEM;
     fd->pidfd.pid = pid;
+    atomic_store_explicit(&fd->pidfd.exited, false, memory_order_relaxed);
     fd->flags = flags;
 
     lock(&pidfd_lock);
     list_add(&pidfd_list, &fd->pidfd_links);
     unlock(&pidfd_lock);
 
-    return f_install(fd, flags & O_CLOEXEC_);
+    // Linux always creates pidfds with O_CLOEXEC (there is no way to get a
+    // non-cloexec pidfd from pidfd_open). PIDFD_NONBLOCK does not change that.
+    return f_install(fd, O_CLOEXEC_);
 }
 
 static int pidfd_poll(struct fd *fd) {
-    return pid_has_exited(fd->pidfd.pid) ? POLL_READ : 0;
+    // Lock-free: read the exit flag published by pidfd_notify_exit. Must NOT
+    // take pids_lock here — poll_wait() calls this with poll->lock held, and
+    // the exit path takes pids_lock then wakes pidfd pollers (which grabs
+    // poll->lock), so a pids_lock acquisition here would close an ABBA cycle.
+    return atomic_load_explicit(&fd->pidfd.exited, memory_order_acquire)
+               ? POLL_READ : 0;
 }
 
 static int pidfd_close(struct fd *fd) {
@@ -79,6 +79,12 @@ void pidfd_notify_exit(pid_t_ pid) {
     list_for_each_entry(&pidfd_list, fd, pidfd_links) {
         total++;
         if (fd->pidfd.pid == pid) {
+            // Publish the exit before waking, so a poll that races the wakeup
+            // still observes POLL_READ. poll_wakeup takes fd->poll_lock and
+            // poll->lock but NOT pids_lock, so calling it here (under pids_lock
+            // via the exit path) does not reintroduce the ABBA — pidfd_poll no
+            // longer takes pids_lock.
+            atomic_store_explicit(&fd->pidfd.exited, true, memory_order_release);
             poll_wakeup(fd, POLL_READ);
             matched++;
         }
