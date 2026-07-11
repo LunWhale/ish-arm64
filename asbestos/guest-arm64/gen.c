@@ -27,6 +27,15 @@
 #include "emu/arch/arm64/decode.h"
 #include "emu/interrupt.h"
 
+// The Py_DECREF / Py_INCREF peephole-fusion fast paths below emit gadget_decref
+// / gadget_incref, whose implementations live in control.S. Those gadgets are
+// still a work in progress and are NOT yet committed, so building them in would
+// leave an undefined reference and break a clean-checkout link. Keep the fusions
+// disabled until the control.S side is finished and committed; then delete these
+// two defines (or build with -U...) to re-enable the optimization.
+#define DISABLE_DECREF_FUSION 1
+#define DISABLE_INCREF_FUSION 1
+
 // Gadget declarations
 extern void gadget_interrupt(void);
 extern void gadget_exit(void);
@@ -807,6 +816,7 @@ extern void gadget_writeback_addr(void);
 extern void gadget_atomic_rmw(void);
 extern void gadget_atomic_cas(void);
 extern void gadget_atomic_casp(void);
+extern void gadget_atomic_casp32(void);
 
 // Memory barrier (DMB ISH) for acquire/release semantics
 extern void gadget_dmb(void);
@@ -2243,13 +2253,15 @@ static int gen_ldst(struct gen_state *state, uint32_t insn) {
         return 1;
     }
 
-    // Atomic compare-and-swap PAIR (CASP/CASPA/CASPL/CASPAL) — 128-bit.
-    // Encoding: 0 sz 001000 0 A 1 Rs o0 11111 Rn Rt  (bit31=0, bit23=0)
-    // Must be matched BEFORE plain CAS below, and handled as a TRUE 128-bit
-    // atomic (both {Rs,Rs+1} vs mem and writing {Rt,Rt+1}). Handling it as a
-    // 64-bit CAS tears the pair — this is exactly the libpas pas_versioned_field
-    // {value,version} corruption that hangs Bun/JSC.
-    if ((insn & 0xbfa07c00) == 0x08207c00) {
+    // Atomic compare-and-swap PAIR — 64-bit variant (CASP{A}{L}, sz=1): a TRUE
+    // 128-bit atomic (compares {Rs,Rs+1} vs 16 bytes of mem, writes {Rt,Rt+1}).
+    // Encoding: 0 sz 001000 0 A 1 Rs o0 11111 Rn Rt  (bit31=0, bit23=0), sz=bit30.
+    // Must be matched BEFORE plain CAS below. Handling it as a 64-bit CAS tears
+    // the pair — exactly the libpas pas_versioned_field {value,version}
+    // corruption that hangs Bun/JSC. sz MUST be in the match (0x40000000):
+    // the 32-bit CASP variant (sz=0) is only an 8-byte atomic over a pair of
+    // 32-bit registers and would be mis-emulated as a 16-byte atomic here.
+    if ((insn & 0xffa07c00) == 0x48207c00) {
         uint32_t A = (insn >> 22) & 1;    // acquire (L, bit22)
         uint32_t R = (insn >> 15) & 1;    // release (o0, bit15)
         uint32_t rs = (insn >> 16) & 0x1f;  // expected pair (Rs, Rs+1)
@@ -2264,6 +2276,31 @@ static int gen_ldst(struct gen_state *state, uint32_t insn) {
         gen(state, (unsigned long) gadget_atomic_casp);
         gen(state, rs | ((uint64_t)rt << 8));
         if (A) gen(state, (unsigned long) gadget_dmb);  // acquire barrier after
+        return 1;
+    }
+
+    // Atomic compare-and-swap PAIR — 32-bit variant (CASP{A}{L}, sz=0): an
+    // 8-byte atomic over the {Ws,W(s+1)} / {Wt,W(t+1)} register pairs, where
+    // Ws is the low word and W(s+1) the high word of a 64-bit quantity. We
+    // emulate it as a single 64-bit CAS: pack expected {Ws,W(s+1)} and desired
+    // {Wt,W(t+1)} into 64-bit values. Same encoding as above but bit30=0.
+    if ((insn & 0xffa07c00) == 0x08207c00) {
+        uint32_t A = (insn >> 22) & 1;
+        uint32_t R = (insn >> 15) & 1;
+        uint32_t rs = (insn >> 16) & 0x1f;
+        uint32_t rn = (insn >> 5) & 0x1f;
+        uint32_t rt = insn & 0x1f;
+
+        gen(state, (unsigned long) gadget_calc_addr_imm);
+        gen(state, rn | (0ULL << 8));
+
+        if (R) gen(state, (unsigned long) gadget_dmb);
+        // 32-bit pair CAS packs the register pair into one 64-bit word; the
+        // dedicated gadget assembles {Ws:W(s+1)} / {Wt:W(t+1)} and does an
+        // 8-byte atomic compare-and-swap.
+        gen(state, (unsigned long) gadget_atomic_casp32);
+        gen(state, rs | ((uint64_t)rt << 8));
+        if (A) gen(state, (unsigned long) gadget_dmb);
         return 1;
     }
 
