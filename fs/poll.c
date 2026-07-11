@@ -93,7 +93,8 @@ static int poll_real_refresh(struct poll *poll, struct fd *fd) {
         if (pf->fd == fd) {
             if (first == NULL)
                 first = pf;
-            types |= pf->types;
+            if (!pf->oneshot_fired)
+                types |= pf->types;
         }
     }
     return real_poll_update(&poll->real, fd->real_fd, types, first);
@@ -133,6 +134,7 @@ int poll_add_fd(struct poll *poll, struct fd *fd, int fd_no, int types, union po
     poll_fd->types = types;
     poll_fd->info = info;
     poll_fd->triggered_types = 0;
+    poll_fd->oneshot_fired = false;
 
     // Link first, then refresh the (shared) host registration to the union of
     // all registrations of this description in this poll.
@@ -202,6 +204,7 @@ int poll_mod_fd(struct poll *poll, struct fd *fd, int fd_no, int types, union po
     poll_fd->types = types;
     poll_fd->info = info;
     poll_fd->triggered_types &= types;
+    poll_fd->oneshot_fired = false; // EPOLL_CTL_MOD re-arms a fired oneshot
 
     if (poll_fd_is_real(poll_fd)) {
         err = poll_real_refresh(poll, fd);
@@ -253,6 +256,10 @@ void poll_wakeup(struct fd *fd, int events) {
     list_for_each_entry(&fd->poll_fds, poll_fd, polls) {
         struct poll *poll = poll_fd->poll;
         lock(&poll->lock);
+        if (poll_fd->oneshot_fired) {
+            unlock(&poll->lock);
+            continue;
+        }
         if (poll_fd->types & POLL_EDGETRIGGERED)
             poll_fd->triggered_types &= ~events;
         if (poll->notify_pipe[1] != -1)
@@ -284,6 +291,8 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
         // check if any fds are ready
         struct poll_fd *poll_fd, *tmp;
         list_for_each_entry_safe(&poll_->poll_fds, poll_fd, tmp, fds) {
+            if (poll_fd->oneshot_fired)
+                continue;
             struct fd *fd = poll_fd->fd;
             int poll_types = 0;
             if (fd->ops->poll)
@@ -302,16 +311,19 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
                 // thundering herd problem at all, but at least the semantics
                 // are right. I'll just leave that as a TODO.
                 if (poll_fd->types & POLL_ONESHOT) {
-                    bool was_real = poll_fd_is_real(poll_fd);
-                    list_remove(&poll_fd->polls);
-                    list_remove(&poll_fd->fds);
-                    if (was_real) {
-                        // Other registrations of the same description may
-                        // remain; refresh the shared host registration to
-                        // their union (deletes it if none remain).
+                    // Disable in place; do NOT unlink. We hold only
+                    // poll->lock here, but poll_fd->polls is walked by
+                    // poll_wakeup under fd->poll_lock — unlinking/freeing
+                    // raced it and crashed the tty input thread (SIGSEGV in
+                    // poll_wakeup when bun registers stdin with
+                    // EPOLLONESHOT). Linux semantics also keep a fired
+                    // oneshot registered, disabled until EPOLL_CTL_MOD.
+                    poll_fd->oneshot_fired = true;
+                    if (poll_fd_is_real(poll_fd)) {
+                        // Refresh the shared host registration to the union
+                        // of the still-armed registrations.
                         poll_real_refresh(poll_, fd);
                     }
-                    free(poll_fd);
                 }
 
                 if (poll_fd->types & POLL_EDGETRIGGERED) {

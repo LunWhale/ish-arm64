@@ -52,6 +52,12 @@ struct poll_fd {
     // returned its bits are set here, and those bits are ignored on the next
     // call to poll_wait. The bits are cleared by poll_wakeup.
     int triggered_types;
+    // A fired POLL_ONESHOT registration is DISABLED in place (Linux keeps
+    // the registration and re-arms it on EPOLL_CTL_MOD), never unlinked from
+    // inside poll_wait: unlinking there holds only poll->lock while
+    // poll_wakeup walks fd->poll_fds under fd->poll_lock, so the tty input
+    // thread would race the free and crash. Written under poll->lock.
+    bool oneshot_fired;
 
     // locked by containing struct fd
     struct poll *poll;
