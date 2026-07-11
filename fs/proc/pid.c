@@ -294,8 +294,13 @@ static struct proc_dir_entry proc_pid_fd;
 
 static bool proc_pid_fd_readdir(struct proc_entry *entry, unsigned long *index, struct proc_entry *next_entry) {
     struct task *task = proc_get_task(entry);
+    // Task exited while its /proc/<pid>/fd dir was being iterated (e.g.
+    // `find /proc` racing short-lived children). This function returns bool —
+    // the old `return _ESRCH` here (-3) read as TRUE, so proc_readdir consumed
+    // a next_entry that was never filled in (meta == NULL) and crashed in
+    // proc_entry_getname (EXC_BAD_ACCESS at 0x10). No task = no more entries.
     if (task == NULL)
-        return _ESRCH;
+        return false;
     // Retain the fdtable, then drop pids_lock BEFORE taking files->lock, to
     // avoid the pids_lock -> files->lock ordering (proc_get_task holds
     // pids_lock). Other paths take files->lock and then pids_lock (e.g. via

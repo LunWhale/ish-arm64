@@ -380,6 +380,11 @@ static inline struct list *blocks_list(struct asbestos *asbestos, page_t page, i
 }
 
 void asbestos_invalidate_range(struct asbestos *absestos, page_t start, page_t end) {
+    // [T-ish-mm-double-destroy-crash] Under CLONE_VM exit_group races the
+    // second cleanup path may run pt_unmap_always after asbestos has already
+    // been freed and nulled (see mem_destroy). Treat as no-op — the freed
+    // asbestos had already been invalidated by the winning cleanup.
+    if (absestos == NULL) return;
     lock(&absestos->lock);
     bool did_invalidate = false;
     struct fiber_block *block, *tmp;
@@ -402,6 +407,9 @@ void asbestos_invalidate_range(struct asbestos *absestos, page_t start, page_t e
 }
 
 void asbestos_invalidate_page(struct asbestos *asbestos, page_t page) {
+    // [T-ish-mm-double-destroy-crash] See asbestos_invalidate_range —
+    // a racing exit_group cleanup can reach this after asbestos was freed.
+    if (asbestos == NULL) return;
     // Fast path: skip lock if no blocks exist on this page.
     // page_hash is only modified under asbestos->lock, and list_null is a
     // single pointer read, so a racy false-negative just means we take
@@ -417,6 +425,8 @@ slow_path:
     asbestos_invalidate_range(asbestos, page, page + 1);
 }
 void asbestos_invalidate_all(struct asbestos *asbestos) {
+    // [T-ish-mm-double-destroy-crash] Safe no-op after cleanup race.
+    if (asbestos == NULL) return;
     lock(&asbestos->lock);
     bool did_invalidate = false;
     struct fiber_block *block, *tmp;

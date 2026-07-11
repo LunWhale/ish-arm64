@@ -80,7 +80,10 @@ void mem_destroy(struct mem *mem) {
         mem->reservations = r->next;
         free(r);
     }
+    // [T-ish-mm-double-destroy-crash] Null out after free so a racing
+    // second cleanup path can't dereference a stale pointer.
     asbestos_free(mem->mmu.asbestos);
+    mem->mmu.asbestos = NULL;
     pt_node_free(mem->pgdir, 0);
     mem->pgdir = NULL;
     write_wrunlock(&mem->lock);
@@ -388,7 +391,15 @@ void mem_init(struct mem *mem) {
 void mem_destroy(struct mem *mem) {
     write_wrlock(&mem->lock);
     pt_unmap_always(mem, 0, MEM_PAGES);
+    // [T-ish-mm-double-destroy-crash] Freed asbestos MUST also be nulled out.
+    // Under CLONE_VM exit_group races (multi-threaded python3 during MCP
+    // teardown), the same struct mm can be reached by a second cleanup path
+    // once refcount has already hit zero — the pt_unmap_always above would
+    // then dereference a freed asbestos and crash in asbestos_invalidate_range
+    // with EXC_BAD_ACCESS. Nulling here + NULL-guarding the invalidate calls
+    // turns the race into a safe no-op instead of a segfault.
     asbestos_free(mem->mmu.asbestos);
+    mem->mmu.asbestos = NULL;
     while (mem->reservations) {
         struct mem_reservation *r = mem->reservations;
         mem->reservations = r->next;

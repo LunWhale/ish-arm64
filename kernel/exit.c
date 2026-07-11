@@ -95,6 +95,9 @@ noreturn void do_exit(int status) {
     if (current->mm != NULL) {
         mm_release(current->mm);
         current->mm = NULL;
+        // [T-ish-mm-leak-refcount-handoff] We just released it, so the pthread
+        // cleanup handler must NOT release again.
+        current->mm_release_deferred = false;
     }
     if (current->files != NULL) {
         fdtable_release(current->files);
@@ -335,11 +338,23 @@ noreturn void do_exit_group(int status) {
                         sighand_release(task->sighand);
                         task->sighand = NULL;
                     }
-                    if (task->mm != NULL) {
-                        mm_release(task->mm);
-                        task->mm = NULL;
-                        task->mem = NULL;
-                    }
+                    // [T-ish-mem-uaf-user-write / T-ish-mm-leak-refcount-handoff]
+                    // DO NOT mm_release() a stuck thread's mm HERE. This thread
+                    // is, by definition, still running inside an uninterruptible
+                    // host syscall (e.g. sys_read → user_write blocked on a
+                    // pipe) and may still hold mem->lock and be about to
+                    // dereference task->mem. Freeing the mm now is a
+                    // use-after-free (EXC_BAD_ACCESS at 0x38 = offsetof(struct
+                    // mem, lock)). So keep task->mm/task->mem intact for now, but
+                    // DEFER the release to this thread's own pthread cleanup
+                    // handler (task_run_current), which runs only after the
+                    // thread has left the read_wrlock critical section — so it
+                    // both avoids the UAF and, unlike the old "accept the leak"
+                    // path, actually reclaims the whole guest address space once
+                    // the host pthread finally terminates. If the thread instead
+                    // unblocks and re-enters do_exit(), that mm_release()s and
+                    // clears the flag, so cleanup won't double-free.
+                    task->mm_release_deferred = true;
                     if (task->files != NULL) {
                         fdtable_release(task->files);
                         task->files = NULL;
