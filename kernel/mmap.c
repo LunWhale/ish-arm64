@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdatomic.h>
+#include <unistd.h>
 #include "debug.h"
 #include "kernel/calls.h"
 #include "kernel/errno.h"
@@ -432,11 +433,36 @@ dword_t sys_madvise(addr_t addr, dword_t len, dword_t advice) {
                 write_wrunlock(&current->mem->lock);
                 continue;
             }
-            // File-backed page: preserve contents (next access must see file
-            // data, not zeros). Skip the zeroing entirely.
+            // File-backed private page: MADV_DONTNEED must make the NEXT access
+            // see the ORIGINAL FILE CONTENTS, discarding any private (CoW)
+            // modifications. Zeroing would be wrong (that's the anonymous case);
+            // merely preserving is also wrong for a *dirtied* page (Linux
+            // reverts it to file data). We can't use host madvise(MADV_DONTNEED)
+            // for this: on Darwin it does NOT restore file contents for a
+            // MAP_PRIVATE file page (verified — the dirty copy persists). So
+            // re-read the original bytes from the backing file with pread.
+            //
+            // File offset of this page = data->file_offset + the page-aligned
+            // part of pt->offset (the sub-page remainder is the mmap
+            // correction, identical for every page of the mapping).
+            struct data *d = pt->data;
             bool file_backed = !(pt->flags & P_ANONYMOUS) &&
-                               pt->data != NULL && pt->data->fd != NULL;
+                               d != NULL && d->fd != NULL;
             if (file_backed) {
+                void *ptr = (char *) d->data + pt->offset;
+                off_t file_off = (off_t) d->file_offset +
+                                 (off_t) (pt->offset & ~((size_t) PAGE_SIZE - 1));
+                // pread is positional and atomic — it does not touch the fd's
+                // file position — so no fd lock is needed. Avoiding it also
+                // keeps us from taking fd->lock while holding mem->lock (a new
+                // lock ordering that could invert against other paths).
+                ssize_t n = pread(d->fd->real_fd, ptr, PAGE_SIZE, file_off);
+                // If the page lies beyond EOF, pread returns < PAGE_SIZE; the
+                // tail past the file end reads as zero on Linux, so zero it.
+                if (n < 0) n = 0;
+                if (n < PAGE_SIZE)
+                    memset((char *) ptr + n, 0, PAGE_SIZE - (size_t) n);
+                any = true;
                 write_wrunlock(&current->mem->lock);
                 continue;
             }
@@ -496,6 +522,11 @@ int_t sys_membarrier(int_t cmd, uint_t flags, int_t UNUSED(cpu_id)) {
     if (getenv("ISH_MEMBARRIER_TRACE"))
         fprintf(stderr, "[membarrier] pid=%d cmd=%d flags=0x%x\n",
                 current->pid, cmd, flags);
+    // The only defined flag is MEMBARRIER_CMD_FLAG_CPU (1), valid solely with
+    // the CPU-targeted variants we don't implement. For every command we do
+    // handle, a non-zero flags argument is invalid — match Linux and reject it.
+    if (flags != 0)
+        return _EINVAL;
     switch (cmd) {
         case MEMBARRIER_CMD_QUERY:
             // Advertise the private/global expedited commands + registration.
