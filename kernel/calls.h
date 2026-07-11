@@ -105,6 +105,10 @@ dword_t sys_preadv(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count,
                    dword_t pos_l, dword_t pos_h);
 dword_t sys_pwritev(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count,
                     dword_t pos_l, dword_t pos_h);
+dword_t sys_preadv2(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count,
+                    dword_t pos_l, dword_t pos_h, dword_t flags);
+dword_t sys_pwritev2(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count,
+                     dword_t pos_l, dword_t pos_h, dword_t flags);
 dword_t sys_ioctl(fd_t f, dword_t cmd, addr_t arg);
 dword_t sys_fcntl(fd_t f, dword_t cmd, addr_t arg);
 dword_t sys_fcntl32(fd_t fd, dword_t cmd, addr_t arg);

@@ -6,6 +6,7 @@
 #include "kernel/task.h"
 #include "kernel/fs.h"
 #include "fs/fd.h"
+#include "fs/poll.h"
 #include "fs/path.h"
 #include "fs/dev.h"
 #include "fs/real.h"
@@ -708,6 +709,52 @@ error:
     free(buf);
     free(iovec);
     return res;
+}
+
+// preadv2/pwritev2 — preadv/pwritev plus a per-call flags word. pos == -1
+// means "use the current file position" (stream form: same as readv/writev).
+// Bun reads tty/pipe stdin through preadv2(fd, iov, n, -1, 0) and treats a
+// raw ENOSYS as a dead stream — it tears down stdin and Claude Code's UI
+// stops seeing keys — so these must exist even though the flags they add are
+// mostly hints for us.
+#define RWF_HIPRI_  0x1
+#define RWF_DSYNC_  0x2
+#define RWF_SYNC_   0x4
+#define RWF_NOWAIT_ 0x8
+#define RWF_APPEND_ 0x10
+
+dword_t sys_preadv2(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count,
+                    dword_t pos_l, dword_t pos_h, dword_t flags) {
+    off_t_ off = ((qword_t)pos_h << 32) | pos_l;
+    STRACE("preadv2(%d, %#x, %d, %lld, %#x)", fd_no, iovec_addr, iovec_count, (long long)off, flags);
+    if (flags & ~(RWF_HIPRI_|RWF_NOWAIT_))
+        return _EOPNOTSUPP;
+    if (flags & RWF_NOWAIT_) {
+        // Don't block: if no data is ready right now, fail with EAGAIN the
+        // way Linux does for a NOWAIT read that would sleep.
+        struct fd *fd = f_get(fd_no);
+        if (fd == NULL)
+            return _EBADF;
+        if (fd->ops->poll && !(fd->ops->poll(fd) & POLL_READ))
+            return _EAGAIN;
+    }
+    if (off == -1)
+        return sys_readv(fd_no, iovec_addr, iovec_count);
+    return sys_preadv(fd_no, iovec_addr, iovec_count, pos_l, pos_h);
+}
+
+dword_t sys_pwritev2(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count,
+                     dword_t pos_l, dword_t pos_h, dword_t flags) {
+    off_t_ off = ((qword_t)pos_h << 32) | pos_l;
+    STRACE("pwritev2(%d, %#x, %d, %lld, %#x)", fd_no, iovec_addr, iovec_count, (long long)off, flags);
+    // DSYNC/SYNC are stronger durability than we provide anywhere else and
+    // HIPRI is a hint; treat them all as best-effort. APPEND with an explicit
+    // offset changes semantics, so refuse it rather than silently mis-write.
+    if ((flags & RWF_APPEND_) && off != -1)
+        return _EOPNOTSUPP;
+    if (off == -1)
+        return sys_writev(fd_no, iovec_addr, iovec_count);
+    return sys_pwritev(fd_no, iovec_addr, iovec_count, pos_l, pos_h);
 }
 
 static int fd_ioctl(struct fd *fd, dword_t cmd, addr_t arg) {
