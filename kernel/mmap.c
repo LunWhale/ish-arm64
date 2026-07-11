@@ -424,46 +424,33 @@ dword_t sys_madvise(addr_t addr, dword_t len, dword_t advice) {
         //     haven't diverged from the file (the common read-only case), the
         //     file contents are already present in the backing, so restoring
         //     original file content is a no-op — safest is to leave them.
+        // MADV_DONTNEED is issued on HUGE mappings (bun MADV_DONTNEEDs its
+        // ~248MB embedded .bun bytecode cache on exit = ~60k pages), so the
+        // per-page cost dominates. Two rules keep it cheap, both established by
+        // history and re-confirmed here:
+        //   1. Walk under a READ lock, not a write lock. Only the rare page that
+        //      actually needs zeroing takes a brief write lock. A per-page write
+        //      lock over 60k pages contends hard with the JIT reader threads and,
+        //      on-device, shows up as a multi-second exit stall.
+        //   2. Skip pages that don't need work:
+        //      - not in the page table (lazy/unmaterialized) — a demand-faulted
+        //        page is already zero (fix 5ab5c2d7).
+        //      - file-backed private — MUST NOT be zeroed (zeroing bun's cache
+        //        is the original ad9cdf74 crash); preserving it already yields
+        //        the correct (clean) contents. We deliberately do NOT pread each
+        //        page to emulate the dirty-page revert: that reintroduced a
+        //        ~60k-synchronous-read exit hang (claude printed its version
+        //        then never returned, main thread parked in sys_madvise→pread).
         addr_t end = addr + len;
         bool any = false;
         for (addr_t p = addr; p < end; p += PAGE_SIZE) {
-            write_wrlock(&current->mem->lock);
+            read_wrlock(&current->mem->lock);
             struct pt_entry *pt = mem_pt(current->mem, PAGE(p));
-            if (pt == NULL) {
-                write_wrunlock(&current->mem->lock);
-                continue;
-            }
-            // File-backed private page: MADV_DONTNEED must make the NEXT access
-            // see the ORIGINAL FILE CONTENTS, discarding any private (CoW)
-            // modifications. Zeroing would be wrong (that's the anonymous case);
-            // merely preserving is also wrong for a *dirtied* page (Linux
-            // reverts it to file data). We can't use host madvise(MADV_DONTNEED)
-            // for this: on Darwin it does NOT restore file contents for a
-            // MAP_PRIVATE file page (verified — the dirty copy persists). So
-            // re-read the original bytes from the backing file with pread.
-            //
-            // File offset of this page = data->file_offset + the page-aligned
-            // part of pt->offset (the sub-page remainder is the mmap
-            // correction, identical for every page of the mapping).
-            struct data *d = pt->data;
-            bool file_backed = !(pt->flags & P_ANONYMOUS) &&
-                               d != NULL && d->fd != NULL;
-            if (file_backed) {
-                void *ptr = (char *) d->data + pt->offset;
-                off_t file_off = (off_t) d->file_offset +
-                                 (off_t) (pt->offset & ~((size_t) PAGE_SIZE - 1));
-                // pread is positional and atomic — it does not touch the fd's
-                // file position — so no fd lock is needed. Avoiding it also
-                // keeps us from taking fd->lock while holding mem->lock (a new
-                // lock ordering that could invert against other paths).
-                ssize_t n = pread(d->fd->real_fd, ptr, PAGE_SIZE, file_off);
-                // If the page lies beyond EOF, pread returns < PAGE_SIZE; the
-                // tail past the file end reads as zero on Linux, so zero it.
-                if (n < 0) n = 0;
-                if (n < PAGE_SIZE)
-                    memset((char *) ptr + n, 0, PAGE_SIZE - (size_t) n);
-                any = true;
-                write_wrunlock(&current->mem->lock);
+            bool skip = pt == NULL ||
+                        (!(pt->flags & P_ANONYMOUS) &&
+                         pt->data != NULL && pt->data->fd != NULL);
+            if (skip) {
+                read_wrunlock(&current->mem->lock);
                 continue;
             }
             void *ptr = mem_ptr(current->mem, p, MEM_WRITE);
@@ -471,7 +458,7 @@ dword_t sys_madvise(addr_t addr, dword_t len, dword_t advice) {
                 memset(ptr, 0, PAGE_SIZE);
                 any = true;
             }
-            write_wrunlock(&current->mem->lock);
+            read_wrunlock(&current->mem->lock);
         }
         if (any)
             mem_changed_pub(current->mem);
