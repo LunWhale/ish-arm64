@@ -843,12 +843,12 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
         // block without our thread needing to return and risk the
         // retry SP compounding.
         read_wrunlock(&mem->lock);
-        // BLOCKING write_wrlock (not trylock) in BOTH JIT and non-JIT
-        // contexts. The earlier concern was "JIT context other threads
-        // hold mem->lock READ — blocking would deadlock"; actually the
-        // JIT-context thread released its own read lock just above and
-        // other threads release their read locks on each JIT block
-        // boundary. Blocking here waits at most one JIT cycle.
+        // write_wrlock here uses a bounded trylock-spin that falls back to a
+        // blocking acquire (see __write_wrlock in util/sync.h). We released our
+        // own read lock just above, and other threads release theirs on each
+        // JIT block boundary, so a reader-free window normally appears within
+        // the spin budget; if it doesn't, the blocking fallback still
+        // guarantees forward progress (waiting at most about one JIT cycle).
         //
         // Returning NULL → INT_GPF from this path is catastrophic for
         // growsdown: INT_GPF retry re-enters the JIT block from the
@@ -970,14 +970,14 @@ have_entry:
                     MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
 
             read_wrunlock(&mem->lock);
-            // BLOCKING write_wrlock (not trylock) in both JIT and
-            // non-JIT contexts. Returning NULL → INT_GPF retry re-runs
-            // the entire JIT block from the start; if the block
-            // contains a prologue like `sub sp, sp, #N` before the
-            // faulting store, each retry decrements SP again,
-            // corrupting the frame layout. Blocking briefly waits for
-            // other readers to release their per-block read locks,
-            // which is bounded (~one JIT cycle).
+            // write_wrlock uses a bounded trylock-spin with a blocking
+            // fallback (util/sync.h). We must get the write lock rather than
+            // return NULL → INT_GPF: retry would re-run the entire JIT block
+            // from the start, and a prologue like `sub sp, sp, #N` before the
+            // faulting store would decrement SP again each retry, corrupting
+            // the frame layout. The spin catches the common case where other
+            // readers release their per-block read locks quickly; the fallback
+            // guarantees we still acquire (bounded ~one JIT cycle).
             write_wrlock(&mem->lock);
             // Re-fetch entry after lock upgrade — another thread may have
             // already resolved this CoW while we were waiting for the lock.

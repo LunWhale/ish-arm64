@@ -179,9 +179,32 @@ static inline void __write_wrlock(wrlock_t *lock, const char *file, int line) {
     // deadlocks (observed intermittently in claude-cli startup). Spinning
     // keeps readers live so they can progress and release, letting the writer
     // eventually win a trylock.
-    struct timespec _ts = {0, 1000}; // 1us backoff
-    while (pthread_rwlock_trywrlock(&lock->l) != 0)
+    //
+    // But an UNBOUNDED trylock-spin has its own failure mode: if readers are
+    // continuously present (busy multi-threaded JIT), trywrlock never sees zero
+    // readers, so the writer can spin forever burning a full core and never
+    // make progress (livelock/starvation). So: spin with a growing backoff for
+    // a bounded number of attempts to catch the common short-lived-reader case
+    // without queuing; if that cap is exceeded, fall back to a BLOCKING wrlock
+    // so the writer is guaranteed forward progress. The blocking wait is
+    // writer-preferring on macOS (it will freeze new readers), which is exactly
+    // the behavior we were avoiding — but only as a last resort after the
+    // non-blocking window failed, which bounds the risk to genuinely
+    // long-contended locks rather than every acquisition.
+    struct timespec _ts = {0, 1000}; // 1us initial backoff
+    int _spins = 0;
+    while (pthread_rwlock_trywrlock(&lock->l) != 0) {
+        if (++_spins > 10000) {
+            // ~tens of ms of spinning elapsed without a reader-free window;
+            // stop burning CPU and block until the lock is ours.
+            if (pthread_rwlock_wrlock(&lock->l) != 0)
+                __builtin_trap();
+            break;
+        }
         nanosleep(&_ts, NULL);
+        if (_ts.tv_nsec < 100000) // cap backoff at 100us
+            _ts.tv_nsec *= 2;
+    }
     assert(lock->val == 0);
     lock->val = -1;
     lock->file = file;
