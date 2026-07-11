@@ -456,6 +456,13 @@ __no_instrument int c_atomic_cas128(struct tlb *tlb, addr_t addr,
                                     uint64_t *old_lo, uint64_t *old_hi) {
     if (old_lo == NULL || old_hi == NULL)
         return -1;
+    // CASP requires 16-byte alignment; real hardware raises an alignment fault
+    // otherwise. Enforce it: an unaligned __atomic_compare_exchange_16 on a
+    // misaligned pointer is not lock-free (it takes libatomic's global lock),
+    // so it would silently lose atomicity against a correctly-aligned CASP from
+    // another thread. Return -1 so the caller raises INT_GPF like the HW fault.
+    if (addr & 0xf)
+        return -1;
     // 16-byte access must not straddle a page boundary for a single ptr.
     if (PGOFFSET(addr) > PAGE_SIZE - 16)
         return -1;
@@ -539,8 +546,13 @@ __no_instrument int c_stxp_cas(struct tlb *tlb, addr_t addr,
     }
     if (size != 3)
         return -1;
-    // 16-byte access must not straddle a page (STXP requires 16-byte alignment
-    // anyway; unaligned pair exclusives fault on real hardware).
+    // STXP requires 16-byte alignment; unaligned pair-exclusives fault on real
+    // hardware. Enforce it — an unaligned __atomic_compare_exchange_16 is not
+    // lock-free (libatomic global lock), silently losing atomicity. Return -1
+    // so the caller raises INT_GPF like the HW alignment fault.
+    if (addr & 0xf)
+        return -1;
+    // 16-byte access must not straddle a page.
     if (PGOFFSET(addr) > PAGE_SIZE - 16)
         return -1;
     void *ptr = __tlb_write_ptr(tlb, addr);

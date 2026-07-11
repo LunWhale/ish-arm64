@@ -3458,3 +3458,64 @@ atomic_casp_segfault:
     mov w0, #INT_GPF
     b fiber_exit
 
+// 32-bit CASP (sz=0): an 8-byte atomic over the {Ws,W(s+1)} / {Wt,W(t+1)}
+// register pairs. Ws is the low word, W(s+1) the high word of a 64-bit value.
+// We assemble the two 32-bit halves into 64-bit expected/desired words and do
+// a single 8-byte CAS via c_atomic_cas (size=3), then split the old value back
+// into Ws / W(s+1). This is NOT a 128-bit op (that would be the 64-bit CASP).
+.gadget atomic_casp32
+    ldr x22, [_pc]
+    add _pc, _pc, #8
+    and x23, x22, #0x1f         // rs
+    ubfx x25, x22, #8, #5       // rt
+    mov x24, _addr              // save guest address
+
+    add x12, _cpu, #CPU_x0
+    // expected = W(s+1):Ws  (Rs=31 => WZR pair = 0). The register file is
+    // 8-byte strided, so compute each element's byte address (reg<<3) and do a
+    // 32-bit load — `ldr w, [base, reg, lsl #3]` is not a legal addressing mode.
+    cmp x23, #31
+    b.eq 1f
+    add x9, x12, x23, lsl #3      // &Ws
+    ldr w13, [x9]                 // exp_lo (Ws, zero-extended)
+    ldr w15, [x9, #8]            // exp_hi (W(s+1))
+    orr x13, x13, x15, lsl #32
+    b 2f
+1:  mov x13, #0
+2:
+    // desired = W(t+1):Wt  (Rt=31 => WZR pair = 0)
+    cmp x25, #31
+    b.eq 3f
+    add x10, x12, x25, lsl #3     // &Wt
+    ldr w14, [x10]               // des_lo (Wt)
+    ldr w15, [x10, #8]          // des_hi (W(t+1))
+    orr x14, x14, x15, lsl #32
+    b 4f
+3:  mov x14, #0
+4:
+    sub sp, sp, #16
+    save_c
+    sub x0, _tlb, #TLB_entries    // tlb
+    mov x1, x24                   // guest address
+    mov x2, x13                   // expected (packed 64-bit)
+    mov x3, x14                   // desired  (packed 64-bit)
+    mov w4, #3                    // size = 3 (8 bytes)
+    add x5, sp, #0xa0             // &old
+    bl NAME(c_atomic_cas)
+    mov w19, w0
+    restore_c
+    mov _addr, x24
+    cbnz w19, atomic_casp_segfault
+    ldr x20, [sp]                 // old packed value
+    add sp, sp, #16
+
+    // Write old value back into Ws, W(s+1) (32-bit writes zero the top half)
+    cmp x23, #31
+    b.eq 5f
+    add x9, _cpu, #CPU_x0
+    add x9, x9, x23, lsl #3       // &Ws
+    str w20, [x9]                 // Ws = old_lo
+    lsr x20, x20, #32
+    str w20, [x9, #8]           // W(s+1) = old_hi
+5:  gret
+
