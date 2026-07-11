@@ -502,8 +502,7 @@ COMPAT_TESTS=(
     # architecture limitation, like automake/perl/go/nslookup above. The
     # claude/codex tests verify the runtime reaches its application layer
     # (auth/prompt) without deadlocking or crashing — no real API key needed.
-    "AICLIs|bun basic JS|/root/.bun/bin/bun -e \"console.log(1+1)\""
-    "AICLIs|bun array ops|/root/.bun/bin/bun -e \"console.log([1,2,3].map(x=>x*x).reduce((a,b)=>a+b))\""
+    "AICLIs|bun lang+stdlib|/root/.bun/bin/bun /tmp/bun_lang_test.js 2>&1 | grep -q BUN_JS_TEST_PASS"
     "AICLIs|claude --version|claude --version"
     "AICLIs|claude -p (no-auth)|claude -p hi 2>&1 | grep -qi \"not logged in\\|login\""
     "AICLIs|codex --version|codex --version"
@@ -586,6 +585,15 @@ suite_compat() {
     # Auto-install missing packages on both architectures
     _ensure_packages "$ISH_X86" -f "$FAKEFS_X86" "x86"
     _ensure_packages "$ISH_ARM64" -f "$FAKEFS_ARM64" "ARM64"
+
+    # Push test assets used by COMPAT_TESTS into both rootfs (e.g. the bun
+    # language/stdlib conformance script). Deployed to both archs; x86 will
+    # still FAIL the bun test since bun isn't installed there.
+    for asset in bun_lang_test.js; do
+        [ -f "$ASSETS_DIR/$asset" ] || continue
+        cat "$ASSETS_DIR/$asset" | timeout 10 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
+        cat "$ASSETS_DIR/$asset" | timeout 10 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
+    done
     echo ""
 
     local total=${#COMPAT_TESTS[@]} n=0
@@ -607,7 +615,7 @@ suite_compat() {
         local t=15
         case "$cmd" in *"npx -y"*) t=60 ;; esac
         case "$name" in
-            "bun basic JS"|"bun array ops") t=20 ;;    # JIT compile, no network
+            "bun lang+stdlib")              t=20 ;;    # JIT compile + lang/stdlib conformance, no network (~1s measured)
             "codex --version")              t=20 ;;    # Rust binary, no network
             "claude -p (no-auth)")          t=30 ;;    # JIT + network diagnostics
             # "claude --version" keeps the 15s default (measured ~3-5s)
