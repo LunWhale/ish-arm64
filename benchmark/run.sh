@@ -496,6 +496,17 @@ COMPAT_TESTS=(
     "Skill|mcporter (mcporter 184★)|npx -y mcporter --help 2>&1 | head -1 >/dev/null"
     "Skill|meitu-cli (meitu-skills 119★)|npx -y meitu-cli@latest --help 2>&1 | head -1 >/dev/null"
     "Skill|node-edge-tts (edge-tts 29★)|npx -y node-edge-tts 2>&1 | head -1 | grep -q Usage"
+
+    # AI CLIs — bun/JSC (claude) and Rust/tokio (codex) runtimes. ARM64-only
+    # (no 32-bit builds of these tools exist); x86 FAIL is an expected
+    # architecture limitation, like automake/perl/go/nslookup above. The
+    # claude/codex tests verify the runtime reaches its application layer
+    # (auth/prompt) without deadlocking or crashing — no real API key needed.
+    "AICLIs|bun basic JS|/root/.bun/bin/bun -e \"console.log(1+1)\""
+    "AICLIs|bun array ops|/root/.bun/bin/bun -e \"console.log([1,2,3].map(x=>x*x).reduce((a,b)=>a+b))\""
+    "AICLIs|claude --version|claude --version"
+    "AICLIs|claude -p (no-auth)|claude -p hi 2>&1 | grep -qi \"not logged in\\|login\""
+    "AICLIs|codex --version|codex --version"
 )
 
 # Binary name → Alpine package mapping for auto-install
@@ -590,8 +601,17 @@ suite_compat() {
 
         # Skill tests that exec `npx -y <pkg>` need a longer budget to spin
         # up Node + load the package; everything else gets the 15s default.
+        # AI CLIs need extra headroom for JIT cold-start (bun/JSC) and network
+        # diagnostics (claude -p connects to the API endpoint before printing
+        # the not-logged-in prompt).
         local t=15
         case "$cmd" in *"npx -y"*) t=60 ;; esac
+        case "$name" in
+            "bun basic JS"|"bun array ops") t=20 ;;    # JIT compile, no network
+            "codex --version")              t=20 ;;    # Rust binary, no network
+            "claude -p (no-auth)")          t=30 ;;    # JIT + network diagnostics
+            # "claude --version" keeps the 15s default (measured ~3-5s)
+        esac
 
         local xr ar
         if timeout "$t" "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "$cmd" >/dev/null 2>&1; then
