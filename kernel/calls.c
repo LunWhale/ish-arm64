@@ -203,6 +203,37 @@ void handle_interrupt(int interrupt) {
                 }
             }
         }
+        // [T-ish-group-null-post-syscall-crash] The syscall we just ran may have
+        // left this thread orphaned: a blocking syscall (futex/poll/wait) can
+        // return right as another thread's do_exit_group() safety valve
+        // force-releases us — it sets our `exiting` flag — and, once the group
+        // leader is reaped, task_destroy() does memset(task, 0, ...) which
+        // zeroes our (thread-local) `current` struct, so both `current->group`
+        // and `current->exiting` read back as 0/NULL. The post-syscall
+        // bookkeeping below dereferences current->group unconditionally; with a
+        // zeroed group that computes &((tgroup*)0)->syscall_count == 0x4fc and
+        // the atomic_fetch_add faults (the reported EXC_BAD_ACCESS at 0x4fc on a
+        // backgrounded guest thread). task_run_current()'s top-of-loop guard
+        // already handles this, but only on the NEXT iteration — we must not
+        // touch group before we get back there.
+        //
+        // Bail the SAME way task_run_current() does for a destroyed/leaked task:
+        // pthread_exit() straight out, letting task_run_current()'s
+        // pthread_cleanup handler (task_run_tlb_cleanup) run — it honors
+        // mm_release_deferred and frees the tlb. Do NOT call do_exit() here:
+        //   * for the zeroed-struct case (group==NULL, exiting==0) do_exit()
+        //     would fall through its `if (current->exiting)` fast-path and then
+        //     dereference current->group->doing_group_exit — the same NULL crash
+        //     one line over;
+        //   * for the force-released case (exiting==1) do_exit() sets
+        //     current=NULL before pthread_exit(), which makes task_run_tlb_cleanup
+        //     skip the deferred mm_release and leak the guest address space.
+        // Reading group_exit_code for a status is pointless anyway — do_exit()
+        // ignores its argument once `exiting` is set — and unsafe, since the
+        // group may already be freed.
+        if (current->exiting || current->group == NULL) {
+            pthread_exit(NULL);
+        }
         // Update deadlock detection state.
         atomic_fetch_add(&current->group->syscall_count, 1);
         // Update last_unblocked_ns for non-blocking syscalls only.
