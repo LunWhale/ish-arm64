@@ -71,13 +71,33 @@ static inline bool poll_fd_is_real(struct poll_fd *pollfd) {
 }
 
 // does not do its own locking
-static struct poll_fd *poll_find_fd(struct poll *poll, struct fd *fd) {
+// Match on the (struct fd, guest fd number) pair — see fd_no in fs/poll.h.
+static struct poll_fd *poll_find_fd(struct poll *poll, struct fd *fd, int fd_no) {
     struct poll_fd *poll_fd, *tmp;
     list_for_each_entry_safe(&poll->poll_fds, poll_fd, tmp, fds) {
-        if (poll_fd->fd == fd)
+        if (poll_fd->fd == fd && poll_fd->fd_no == fd_no)
             return poll_fd;
     }
     return NULL;
+}
+
+// Recompute the host (real) registration for `fd` in this poll as the UNION
+// of the event types of every registration referring to it. Several guest
+// registrations (different fd numbers, same description after dup) share one
+// host registration, since the host backend is keyed by real_fd. Passing 0
+// types deletes the host registration. poll->lock must be held.
+static int poll_real_refresh(struct poll *poll, struct fd *fd) {
+    int types = 0;
+    struct poll_fd *pf, *first = NULL;
+    list_for_each_entry(&poll->poll_fds, pf, fds) {
+        if (pf->fd == fd) {
+            if (first == NULL)
+                first = pf;
+            if (!pf->oneshot_fired)
+                types |= pf->types;
+        }
+    }
+    return real_poll_update(&poll->real, fd->real_fd, types, first);
 }
 
 // See comment on pollfd_freelist for context
@@ -88,11 +108,11 @@ static void poll_fd_free(struct poll_fd *poll_fd) {
     list_add(&poll->pollfd_freelist, &poll_fd->fds);
 }
 
-bool poll_has_fd(struct poll *poll, struct fd *fd) {
-    return poll_find_fd(poll, fd) != NULL;
+bool poll_has_fd(struct poll *poll, struct fd *fd, int fd_no) {
+    return poll_find_fd(poll, fd, fd_no) != NULL;
 }
 
-int poll_add_fd(struct poll *poll, struct fd *fd, int types, union poll_fd_info info) {
+int poll_add_fd(struct poll *poll, struct fd *fd, int fd_no, int types, union poll_fd_info info) {
     int err;
     lock(&fd->poll_lock);
     lock(&poll->lock);
@@ -109,22 +129,28 @@ int poll_add_fd(struct poll *poll, struct fd *fd, int types, union poll_fd_info 
         }
     }
     poll_fd->fd = fd;
+    poll_fd->fd_no = fd_no;
     poll_fd->poll = poll;
     poll_fd->types = types;
     poll_fd->info = info;
     poll_fd->triggered_types = 0;
+    poll_fd->oneshot_fired = false;
+
+    // Link first, then refresh the (shared) host registration to the union of
+    // all registrations of this description in this poll.
+    list_add(&fd->poll_fds, &poll_fd->polls);
+    list_add(&poll->poll_fds, &poll_fd->fds);
 
     if (poll_fd_is_real(poll_fd)) {
-        err = real_poll_update(&poll->real, fd->real_fd, types, poll_fd);
+        err = poll_real_refresh(poll, fd);
         if (err < 0) {
-            free(poll_fd);
+            list_remove(&poll_fd->polls);
+            list_remove(&poll_fd->fds);
+            poll_fd_free(poll_fd);
             err = errno_map();
             goto out;
         }
     }
-
-    list_add(&fd->poll_fds, &poll_fd->polls);
-    list_add(&poll->poll_fds, &poll_fd->fds);
 
     err = 0;
 out:
@@ -133,28 +159,31 @@ out:
     return err;
 }
 
-int poll_del_fd(struct poll *poll, struct fd *fd) {
+int poll_del_fd(struct poll *poll, struct fd *fd, int fd_no) {
     int err;
     lock(&fd->poll_lock);
     lock(&poll->lock);
-    struct poll_fd *poll_fd = poll_find_fd(poll, fd);
+    struct poll_fd *poll_fd = poll_find_fd(poll, fd, fd_no);
     if (poll_fd == NULL) {
         err = _ENOENT;
         goto out;
     }
 
-    if (poll_fd_is_real(poll_fd)) {
-        err = real_poll_update(&poll->real, fd->real_fd, 0, poll_fd);
-        if (err < 0) {
-            err = errno_map();
-            goto out;
-        }
-    }
-
+    bool is_real = poll_fd_is_real(poll_fd);
     list_remove(&poll_fd->polls);
     list_remove(&poll_fd->fds);
     poll_fd_free(poll_fd);
 
+    // Refresh (or delete, if this was the last registration) the shared host
+    // registration to the union of the remaining registrations.
+    if (is_real) {
+        err = poll_real_refresh(poll, fd);
+        if (err < 0) {
+            err = errno_map();
+            goto out;
+        }
+    }
+
     err = 0;
 out:
     unlock(&poll->lock);
@@ -162,27 +191,28 @@ out:
     return err;
 }
 
-int poll_mod_fd(struct poll *poll, struct fd *fd, int types, union poll_fd_info info) {
+int poll_mod_fd(struct poll *poll, struct fd *fd, int fd_no, int types, union poll_fd_info info) {
     int err;
     lock(&fd->poll_lock);
     lock(&poll->lock);
-    struct poll_fd *poll_fd = poll_find_fd(poll, fd);
+    struct poll_fd *poll_fd = poll_find_fd(poll, fd, fd_no);
     if (poll_fd == NULL) {
         err = _ENOENT;
         goto out;
-    }
-
-    if (poll_fd_is_real(poll_fd)) {
-        err = real_poll_update(&poll->real, fd->real_fd, types, poll_fd);
-        if (err < 0) {
-            err = errno_map();
-            goto out;
-        }
     }
 
     poll_fd->types = types;
     poll_fd->info = info;
     poll_fd->triggered_types &= types;
+    poll_fd->oneshot_fired = false; // EPOLL_CTL_MOD re-arms a fired oneshot
+
+    if (poll_fd_is_real(poll_fd)) {
+        err = poll_real_refresh(poll, fd);
+        if (err < 0) {
+            err = errno_map();
+            goto out;
+        }
+    }
 
     err = 0;
 out:
@@ -206,12 +236,30 @@ void poll_cleanup_fd(struct fd *fd) {
     unlock(&fd->poll_lock);
 }
 
+// Diagnostic: dump each member fd of a poll set with its current poll state.
+void poll_dump_members(struct poll *poll) {
+    lock(&poll->lock);
+    struct poll_fd *poll_fd;
+    list_for_each_entry(&poll->poll_fds, poll_fd, fds) {
+        struct fd *fd = poll_fd->fd;
+        int ready = (fd->ops && fd->ops->poll) ? fd->ops->poll(fd) : -1;
+        fprintf(stderr, "  [epoll-member] fd_no=%d type=%#x want=%#x ready=%#x triggered=%#x real_fd=%d\n",
+                poll_fd->fd_no, fd->type, poll_fd->types, ready,
+                poll_fd->triggered_types, fd->real_fd);
+    }
+    unlock(&poll->lock);
+}
+
 void poll_wakeup(struct fd *fd, int events) {
     struct poll_fd *poll_fd;
     lock(&fd->poll_lock);
     list_for_each_entry(&fd->poll_fds, poll_fd, polls) {
         struct poll *poll = poll_fd->poll;
         lock(&poll->lock);
+        if (poll_fd->oneshot_fired) {
+            unlock(&poll->lock);
+            continue;
+        }
         if (poll_fd->types & POLL_EDGETRIGGERED)
             poll_fd->triggered_types &= ~events;
         if (poll->notify_pipe[1] != -1)
@@ -243,6 +291,8 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
         // check if any fds are ready
         struct poll_fd *poll_fd, *tmp;
         list_for_each_entry_safe(&poll_->poll_fds, poll_fd, tmp, fds) {
+            if (poll_fd->oneshot_fired)
+                continue;
             struct fd *fd = poll_fd->fd;
             int poll_types = 0;
             if (fd->ops->poll)
@@ -261,12 +311,19 @@ int poll_wait(struct poll *poll_, poll_callback_t callback, void *context, struc
                 // thundering herd problem at all, but at least the semantics
                 // are right. I'll just leave that as a TODO.
                 if (poll_fd->types & POLL_ONESHOT) {
-                    list_remove(&poll_fd->polls);
-                    list_remove(&poll_fd->fds);
+                    // Disable in place; do NOT unlink. We hold only
+                    // poll->lock here, but poll_fd->polls is walked by
+                    // poll_wakeup under fd->poll_lock — unlinking/freeing
+                    // raced it and crashed the tty input thread (SIGSEGV in
+                    // poll_wakeup when bun registers stdin with
+                    // EPOLLONESHOT). Linux semantics also keep a fired
+                    // oneshot registered, disabled until EPOLL_CTL_MOD.
+                    poll_fd->oneshot_fired = true;
                     if (poll_fd_is_real(poll_fd)) {
-                        real_poll_update(&poll_->real, fd->real_fd, 0, NULL);
+                        // Refresh the shared host registration to the union
+                        // of the still-armed registrations.
+                        poll_real_refresh(poll_, fd);
                     }
-                    free(poll_fd);
                 }
 
                 if (poll_fd->types & POLL_EDGETRIGGERED) {

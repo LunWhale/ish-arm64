@@ -64,31 +64,56 @@ bool __tlb_write_cross_page(struct tlb *tlb, addr_t addr, const char *value, uns
 }
 
 __no_instrument void *tlb_handle_miss(struct tlb *tlb, addr_t addr, int type) {
-    char *ptr = mmu_translate(tlb->mmu, TLB_PAGE(addr), type);
-    if (tlb->mmu->changes != tlb->mem_changes) {
-        tlb_flush(tlb);
-        // Re-translate after flush. The ptr we got may be stale if another
-        // thread did mmap/munmap concurrently. When a multi-page data object
-        // is partially unmapped, the old host memory stays readable (refcount
-        // > 0 means no PROT_NONE), so a stale ptr silently reads wrong data.
-        // Re-translating ensures we get a pointer to the CURRENT mapping.
+    // Seqlock-style translate: snapshot mmu->changes BEFORE translating, then
+    // verify it did not advance across the translation. If it did, another
+    // thread remapped a page concurrently and `ptr` may reference the stale
+    // host backing (a partial munmap / CoW leaves the old page readable via
+    // its lingering refcount, so the stale ptr silently reads wrong data).
+    // Loop until we get a ptr and a generation that are mutually consistent,
+    // so the gen we stamp on the entry truly matches the backing it points at.
+    uint64_t gen;
+    char *ptr;
+    // A write miss on a CoW page performs the copy inside mmu_translate, which
+    // itself bumps mmu->changes; the retry then sees a stable generation once
+    // the page is resolved. Bound the loop so a thread continuously remapping
+    // can't livelock us — after the cap we accept the latest consistent-enough
+    // translation (the per-block coherence check will still catch a later
+    // change).
+    for (int attempt = 0; ; attempt++) {
+        gen = __atomic_load_n(&tlb->mmu->changes, __ATOMIC_ACQUIRE);
+        if (gen != tlb->mem_changes)
+            tlb_flush(tlb);
+        tlb->mem_changes = gen;
         ptr = mmu_translate(tlb->mmu, TLB_PAGE(addr), type);
+        // Re-read after translate; if unchanged, ptr is consistent with `gen`.
+        if (__atomic_load_n(&tlb->mmu->changes, __ATOMIC_ACQUIRE) == gen)
+            break;
+        if (attempt >= 8) {
+            // Refresh gen to the post-translate value so the entry we stamp is
+            // at least self-consistent with this last translation.
+            gen = __atomic_load_n(&tlb->mmu->changes, __ATOMIC_ACQUIRE);
+            tlb->mem_changes = gen;
+            break;
+        }
+        // Raced with a concurrent remap — retry with the fresh generation.
     }
     if (ptr == NULL) {
         tlb->segfault_addr = addr;
         return NULL;
     }
 
-    // Snapshot changes BEFORE populating entry. If another thread modifies
-    // the page table between here and the next mem_changes check, the
-    // mismatch will be detected and the TLB will be flushed.
-    tlb->mem_changes = __atomic_load_n(&tlb->mmu->changes, __ATOMIC_ACQUIRE);
-
     tlb->dirty_page = TLB_PAGE(addr);
 
     struct tlb_entry *tlb_ent = &tlb->entries[TLB_INDEX(addr)];
     tlb_ent->page = TLB_PAGE(addr);
     tlb_ent->data_minus_addr = (uintptr_t) ptr - TLB_PAGE(addr);
+#ifdef GUEST_ARM64
+    // Record the coherence generation this host pointer is valid for. A hit on
+    // this entry is only trustworthy while mmu->changes still equals this; if
+    // another thread remapped the page (CoW/mmap/munmap) mmu->changes advances
+    // and the cached data_minus_addr points at the stale host backing.
+    tlb_ent->gen = (uintptr_t) gen;
+#endif
 
     if (type == MEM_WRITE) {
         tlb_ent->page_if_writable = TLB_PAGE(addr);
@@ -268,6 +293,16 @@ __no_instrument int c_store8(struct tlb *tlb, addr_t addr, uint8_t value) {
     return 0;
 }
 
+// IC IVAU: the guest modified code at `addr` and is invalidating its icache.
+// Drop any translated blocks for that page so the new code gets retranslated.
+// Without this, a store through an already-writable TLB entry (which never
+// takes the mem_ptr write-miss path that calls asbestos_invalidate_page)
+// leaves stale translations running — JSC's in-place JIT repatching breaks.
+__no_instrument void c_ic_ivau(struct tlb *tlb, addr_t addr) {
+    extern void asbestos_invalidate_page(struct asbestos *asbestos, page_t page);
+    asbestos_invalidate_page(tlb->mmu->asbestos, PAGE(addr));
+}
+
 // Atomic memory operations (LSE): LDADD/LDCLR/LDEOR/LDSET/LDSMAX/LDSMIN/LDUMAX/LDUMIN/SWP
 // Return: 0 on success, -1 on segfault or unsupported op
 // Helper macros for atomic RMW with CAS loop (for min/max that lack atomic builtins)
@@ -405,6 +440,46 @@ __no_instrument int c_atomic_cas(struct tlb *tlb, addr_t addr, uint64_t expected
     }
 }
 
+// 128-bit atomic compare-and-swap for the CASP (Compare-And-Swap Pair)
+// instruction. CASP atomically compares/swaps a 16-byte pair — this MUST be
+// a single atomic 128-bit operation, not two 64-bit CAS, otherwise a torn
+// update can break lock-free algorithms that rely on the pair being updated
+// atomically (e.g. libpas's pas_versioned_field {value, version}).
+//
+// exp_lo/exp_hi = expected pair (Rs, Rs+1); des_lo/des_hi = desired pair
+// (Rt, Rt+1). On return, *old_lo/*old_hi hold the actual old pair (the CAS
+// writes the old value back into the expected registers, success or fail).
+// Returns 0 on success (host ptr valid), -1 on segfault.
+__no_instrument int c_atomic_cas128(struct tlb *tlb, addr_t addr,
+                                    uint64_t exp_lo, uint64_t exp_hi,
+                                    uint64_t des_lo, uint64_t des_hi,
+                                    uint64_t *old_lo, uint64_t *old_hi) {
+    if (old_lo == NULL || old_hi == NULL)
+        return -1;
+    // CASP requires 16-byte alignment; real hardware raises an alignment fault
+    // otherwise. Enforce it: an unaligned __atomic_compare_exchange_16 on a
+    // misaligned pointer is not lock-free (it takes libatomic's global lock),
+    // so it would silently lose atomicity against a correctly-aligned CASP from
+    // another thread. Return -1 so the caller raises INT_GPF like the HW fault.
+    if (addr & 0xf)
+        return -1;
+    // 16-byte access must not straddle a page boundary for a single ptr.
+    if (PGOFFSET(addr) > PAGE_SIZE - 16)
+        return -1;
+    void *ptr = __tlb_write_ptr(tlb, addr);
+    if (ptr == NULL)
+        return -1;
+    __uint128_t exp = ((__uint128_t)exp_hi << 64) | (__uint128_t)exp_lo;
+    __uint128_t des = ((__uint128_t)des_hi << 64) | (__uint128_t)des_lo;
+    __atomic_compare_exchange_n((__uint128_t *)ptr, &exp, des,
+                                false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    // exp is updated to the actual old value on failure (and unchanged =
+    // old value on success).
+    *old_lo = (uint64_t)exp;
+    *old_hi = (uint64_t)(exp >> 64);
+    return 0;
+}
+
 // STXR atomic compare-and-swap helper for LDXR/STXR emulation.
 // Compares memory at addr with expected_val, if equal stores new_val.
 // Returns 0 on success (CAS succeeded), 1 on failure (CAS lost race),
@@ -448,6 +523,45 @@ __no_instrument int c_stxr_cas(struct tlb *tlb, addr_t addr,
         default:
             return -1;
     }
+}
+
+// STXP atomic compare-and-swap helper for LDXP/STXP pair-exclusive emulation.
+// A pair-exclusive store must atomically write BOTH registers only if memory
+// still holds the pair loaded by LDXP — emulating it as a plain store pair
+// that always "succeeds" tears lock-free algorithms (e.g. libpas versioned
+// fields via __atomic_compare_exchange_16 outline fallbacks) under threads.
+// size: 2 = 32-bit pair (one 64-bit CAS), 3 = 64-bit pair (one 128-bit CAS).
+// Returns 0 on CAS success, 1 on CAS failure, -1 on segfault/misaligned.
+__no_instrument int c_stxp_cas(struct tlb *tlb, addr_t addr,
+                               uint64_t exp1, uint64_t exp2,
+                               uint64_t new1, uint64_t new2, uint32_t size) {
+    if (size == 2) {
+        uint64_t exp = (uint32_t)exp1 | ((uint64_t)(uint32_t)exp2 << 32);
+        uint64_t des = (uint32_t)new1 | ((uint64_t)(uint32_t)new2 << 32);
+        void *ptr = __tlb_write_ptr(tlb, addr);
+        if (ptr == NULL)
+            return -1;
+        return __atomic_compare_exchange_n((uint64_t *)ptr, &exp, des,
+                                           false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST) ? 0 : 1;
+    }
+    if (size != 3)
+        return -1;
+    // STXP requires 16-byte alignment; unaligned pair-exclusives fault on real
+    // hardware. Enforce it — an unaligned __atomic_compare_exchange_16 is not
+    // lock-free (libatomic global lock), silently losing atomicity. Return -1
+    // so the caller raises INT_GPF like the HW alignment fault.
+    if (addr & 0xf)
+        return -1;
+    // 16-byte access must not straddle a page.
+    if (PGOFFSET(addr) > PAGE_SIZE - 16)
+        return -1;
+    void *ptr = __tlb_write_ptr(tlb, addr);
+    if (ptr == NULL)
+        return -1;
+    __uint128_t exp = ((__uint128_t)exp2 << 64) | (__uint128_t)exp1;
+    __uint128_t des = ((__uint128_t)new2 << 64) | (__uint128_t)new1;
+    return __atomic_compare_exchange_n((__uint128_t *)ptr, &exp, des,
+                                       false, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST) ? 0 : 1;
 }
 
 // LDP/STP helper functions for pair loads/stores

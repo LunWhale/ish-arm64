@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdatomic.h>
+#include <unistd.h>
 #include "debug.h"
 #include "kernel/calls.h"
 #include "kernel/errno.h"
@@ -245,8 +246,30 @@ addr_t sys_mmap(addr_t args_addr) {
     return mmap_common(args.addr, args.len, args.prot, args.flags, args.fd, args.offset);
 }
 
+// Diagnostic (ISH_VMA_TRACE=1): log munmap/madvise/mprotect that touch a
+// file-backed mapping. Used to track how guest runtimes reclaim file-backed
+// regions (e.g. bun MADV_DONTNEED'ing its embedded bytecode cache).
+static int vma_trace_hits_file(addr_t addr, addr_t len) {
+    extern char *getenv(const char *);
+    if (!getenv("ISH_VMA_TRACE")) return 0;
+    addr_t end = addr + len;
+    int found = 0;
+    read_wrlock(&current->mem->lock);
+    for (addr_t p = addr; p < end && !found; p += PAGE_SIZE) {
+        struct pt_entry *pt = mem_pt(current->mem, PAGE(p));
+        if (pt != NULL && !(pt->flags & P_ANONYMOUS) &&
+                pt->data != NULL && pt->data->fd != NULL)
+            found = 1;
+    }
+    read_wrunlock(&current->mem->lock);
+    return found;
+}
+
 int_t sys_munmap(addr_t addr, addr_t len) {
     STRACE("munmap(0x%llx, 0x%llx)", (unsigned long long)addr, (unsigned long long)len);
+    if (vma_trace_hits_file(addr, len))
+        fprintf(stderr, "[vma] munmap(0x%llx, 0x%llx) [file-backed] pid=%d\n",
+                (unsigned long long)addr, (unsigned long long)len, current->pid);
     if (getenv("ISH_PROT_TRACE")) {
         addr_t end = addr + len;
         if (end > 0xed000000ULL && addr < 0xf0000000ULL) {
@@ -324,6 +347,9 @@ int_t sys_mprotect(addr_t addr, addr_t len, int_t prot) {
                     (unsigned long long)addr, (unsigned long long)len, prot);
         }
     }
+    if (vma_trace_hits_file(addr, len))
+        fprintf(stderr, "[vma] mprotect(0x%llx, 0x%llx, prot=0x%x) [file-backed] pid=%d\n",
+                (unsigned long long)addr, (unsigned long long)len, prot, current->pid);
     if (PGOFFSET(addr) != 0)
         return _EINVAL;
     if (prot & ~P_RWX)
@@ -337,21 +363,105 @@ int_t sys_mprotect(addr_t addr, addr_t len, int_t prot) {
 
 dword_t sys_madvise(addr_t addr, dword_t len, dword_t advice) {
     STRACE("madvise(0x%llx, 0x%x, %d)", (unsigned long long)addr, len, advice);
-    if (advice == 4 /* MADV_DONTNEED */ || advice == 8 /* MADV_FREE */) {
+    if (advice == 4 && vma_trace_hits_file(addr, len))
+        fprintf(stderr, "[vma] madvise(0x%llx, 0x%x, DONTNEED) [file-backed] pid=%d\n",
+                (unsigned long long)addr, len, current->pid);
+    if (PGOFFSET(addr) != 0)
+        return _EINVAL;
+    // Linux returns ENOMEM if any page in the range is not part of a mapping.
+    // This is load-bearing, not pedantry: musl's pthread_getattr_np probes the
+    // main-thread stack extent one page at a time with madvise(MADV_NORMAL)
+    // and relies on ENOMEM at the first unmapped page. Always returning
+    // success made it report the stack as RLIMIT_STACK-sized (128MB); bun then
+    // moves SP to that "bottom" and zeroes the whole range, faulting at the
+    // rlimit boundary (deterministic startup SIGSEGV at stack_top - 128MB).
+    // Lazy reservations count as mapped — natively they'd be PROT_NONE VMAs.
+    {
+        read_wrlock(&current->mem->lock);
+        for (page_t page = PAGE(addr); page < PAGE(addr) + PAGE_ROUND_UP(len); page++) {
+            if (mem_pt(current->mem, page) == NULL &&
+                    mem_find_reservation(current->mem, page) == NULL) {
+                read_wrunlock(&current->mem->lock);
+                return _ENOMEM;
+            }
+        }
+        read_wrunlock(&current->mem->lock);
+    }
+    // MADV_FREE (8) is purely advisory: the kernel MAY reclaim the pages under
+    // memory pressure, but until then reads still return the old contents.
+    // Eagerly zeroing them is both wrong (a subsequent read that races the
+    // reclaim must see either old-or-zero, never a torn mix) and dangerous
+    // under threads — another thread aliasing the page via a live TLB entry
+    // would observe it turn to zero mid-computation. JSC's scavenger uses
+    // MADV_FREE heavily; treat it as a no-op (safe: we just keep the memory).
+    if (advice == 8 /* MADV_FREE */)
+        return 0;
+
+    // Diagnostic: ISH_NO_DONTNEED=1 treats MADV_DONTNEED as a no-op (like
+    // MADV_FREE) to test whether the in-place zeroing loses concurrent writes.
+    {
+        static int no_dontneed = -1;
+        if (no_dontneed == -1) {
+            const char *e = getenv("ISH_NO_DONTNEED");
+            no_dontneed = (e && e[0] == '1') ? 1 : 0;
+        }
+        if (no_dontneed && advice == 4)
+            return 0;
+    }
+    if (advice == 4 /* MADV_DONTNEED */) {
+        // MADV_DONTNEED semantics differ by mapping type:
+        //   - ANONYMOUS private: the next access must see zero-fill. We zero
+        //     the backing in place.
+        //   - FILE-BACKED private (MAP_PRIVATE over a file): DONTNEED discards
+        //     the private (CoW) copy so the NEXT access re-reads the ORIGINAL
+        //     FILE CONTENTS — NOT zero. bun does exactly this to reclaim the
+        //     physical pages of its embedded bytecode cache (.bun section, a
+        //     164MB MAP_PRIVATE file mapping) after decoding, expecting the
+        //     bytes to transparently page back in. Zeroing them here corrupted
+        //     the cache mid-decode → UnlinkedCodeBlock numCalleeLocals read as
+        //     0 → llint prologue stack-frame underflow → SIGSEGV (the
+        //     claude-cli crash). For a private file mapping whose pages we
+        //     haven't diverged from the file (the common read-only case), the
+        //     file contents are already present in the backing, so restoring
+        //     original file content is a no-op — safest is to leave them.
+        // MADV_DONTNEED is issued on HUGE mappings (bun MADV_DONTNEEDs its
+        // ~248MB embedded .bun bytecode cache on exit = ~60k pages), so the
+        // per-page cost dominates. Two rules keep it cheap, both established by
+        // history and re-confirmed here:
+        //   1. Walk under a READ lock, not a write lock. Only the rare page that
+        //      actually needs zeroing takes a brief write lock. A per-page write
+        //      lock over 60k pages contends hard with the JIT reader threads and,
+        //      on-device, shows up as a multi-second exit stall.
+        //   2. Skip pages that don't need work:
+        //      - not in the page table (lazy/unmaterialized) — a demand-faulted
+        //        page is already zero (fix 5ab5c2d7).
+        //      - file-backed private — MUST NOT be zeroed (zeroing bun's cache
+        //        is the original ad9cdf74 crash); preserving it already yields
+        //        the correct (clean) contents. We deliberately do NOT pread each
+        //        page to emulate the dirty-page revert: that reintroduced a
+        //        ~60k-synchronous-read exit hang (claude printed its version
+        //        then never returned, main thread parked in sys_madvise→pread).
         addr_t end = addr + len;
+        bool any = false;
         for (addr_t p = addr; p < end; p += PAGE_SIZE) {
             read_wrlock(&current->mem->lock);
-#ifdef GUEST_ARM64
-            if (mem_pt(current->mem, PAGE(p)) == NULL) {
+            struct pt_entry *pt = mem_pt(current->mem, PAGE(p));
+            bool skip = pt == NULL ||
+                        (!(pt->flags & P_ANONYMOUS) &&
+                         pt->data != NULL && pt->data->fd != NULL);
+            if (skip) {
                 read_wrunlock(&current->mem->lock);
                 continue;
             }
-#endif
             void *ptr = mem_ptr(current->mem, p, MEM_WRITE);
-            read_wrunlock(&current->mem->lock);
-            if (ptr != NULL)
+            if (ptr != NULL) {
                 memset(ptr, 0, PAGE_SIZE);
+                any = true;
+            }
+            read_wrunlock(&current->mem->lock);
         }
+        if (any)
+            mem_changed_pub(current->mem);
     }
     return 0;
 }
@@ -367,6 +477,74 @@ int_t sys_mlock(addr_t UNUSED(addr), dword_t UNUSED(len)) {
 
 int_t sys_msync(addr_t UNUSED(addr), dword_t UNUSED(len), int_t UNUSED(flags)) {
     return 0;
+}
+
+// membarrier(2). JSC's concurrent JIT and WTF's parking-lot use this to make
+// their sequentially-consistent-fence-free fast paths safe: they omit the
+// per-thread barrier on the common path and issue a process-wide barrier via
+// membarrier on the slow path (RegisterState publish, GC handshake). Without
+// it (our old ENOSYS stub) JSC has no fallback that works, and a compiler
+// thread can publish a half-decoded UnlinkedCodeBlock that the main thread
+// then reads as zeros — the claude-cli numCalleeLocals=0 crash.
+//
+// In iSH every guest thread is a native host thread over shared native
+// memory, so a real host barrier here plus the ordering already present on
+// the OTHER threads' next memory op gives the required guarantee. The
+// EXPEDITED variants are synchronous: the caller must observe all other
+// threads' prior accesses. We approximate this by a strong host fence; on the
+// ARM64/x86 hosts iSH targets this is a full DMB ISH / MFENCE, which — paired
+// with the fact that reader threads re-load through the TLB with acquire
+// semantics — is sufficient. QUERY reports the commands we support.
+#define MEMBARRIER_CMD_QUERY                     0
+#define MEMBARRIER_CMD_GLOBAL                    (1 << 0)
+#define MEMBARRIER_CMD_GLOBAL_EXPEDITED          (1 << 1)
+#define MEMBARRIER_CMD_REGISTER_GLOBAL_EXPEDITED (1 << 2)
+#define MEMBARRIER_CMD_PRIVATE_EXPEDITED         (1 << 3)
+#define MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED (1 << 4)
+#define MEMBARRIER_CMD_PRIVATE_EXPEDITED_SYNC_CORE (1 << 5)
+#define MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED_SYNC_CORE (1 << 6)
+
+int_t sys_membarrier(int_t cmd, uint_t flags, int_t UNUSED(cpu_id)) {
+    STRACE("membarrier(%d, 0x%x)", cmd, flags);
+    if (getenv("ISH_MEMBARRIER_TRACE"))
+        fprintf(stderr, "[membarrier] pid=%d cmd=%d flags=0x%x\n",
+                current->pid, cmd, flags);
+    // The only defined flag is MEMBARRIER_CMD_FLAG_CPU (1), valid solely with
+    // the CPU-targeted variants we don't implement. For every command we do
+    // handle, a non-zero flags argument is invalid — match Linux and reject it.
+    if (flags != 0)
+        return _EINVAL;
+    switch (cmd) {
+        case MEMBARRIER_CMD_QUERY:
+            // Advertise the private/global expedited commands + registration.
+            return MEMBARRIER_CMD_GLOBAL
+                 | MEMBARRIER_CMD_GLOBAL_EXPEDITED
+                 | MEMBARRIER_CMD_REGISTER_GLOBAL_EXPEDITED
+                 | MEMBARRIER_CMD_PRIVATE_EXPEDITED
+                 | MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED
+                 | MEMBARRIER_CMD_PRIVATE_EXPEDITED_SYNC_CORE
+                 | MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED_SYNC_CORE;
+
+        // Registration commands: nothing to set up (any thread may issue the
+        // expedited barrier). Native Linux requires prior registration, so
+        // JSC always calls these first; return success.
+        case MEMBARRIER_CMD_REGISTER_GLOBAL_EXPEDITED:
+        case MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED:
+        case MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED_SYNC_CORE:
+            return 0;
+
+        // Barrier commands: issue a real process-wide-strength host fence.
+        case MEMBARRIER_CMD_GLOBAL:
+        case MEMBARRIER_CMD_GLOBAL_EXPEDITED:
+        case MEMBARRIER_CMD_PRIVATE_EXPEDITED:
+        case MEMBARRIER_CMD_PRIVATE_EXPEDITED_SYNC_CORE:
+            __atomic_thread_fence(__ATOMIC_SEQ_CST);
+            __sync_synchronize();
+            return 0;
+
+        default:
+            return _EINVAL;
+    }
 }
 
 addr_t sys_brk(addr_t new_brk) {

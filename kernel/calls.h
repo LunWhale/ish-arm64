@@ -30,6 +30,7 @@ int must_check user_write_string(addr_t addr, const char *buf);
 
 // process lifecycle
 dword_t sys_clone(dword_t flags, addr_t stack, addr_t ptid, addr_t tls, addr_t ctid);
+dword_t sys_clone3(addr_t args_addr, dword_t size);
 dword_t sys_fork(void);
 dword_t sys_vfork(void);
 dword_t sys_execve(addr_t file, addr_t argv, addr_t envp);
@@ -62,6 +63,7 @@ dword_t sys_madvise(addr_t addr, dword_t len, dword_t advice);
 dword_t sys_mbind(addr_t addr, dword_t len, int_t mode, addr_t nodemask, dword_t maxnode, uint_t flags);
 int_t sys_mlock(addr_t addr, dword_t len);
 int_t sys_msync(addr_t addr, dword_t len, int_t flags);
+int_t sys_membarrier(int_t cmd, uint_t flags, int_t cpu_id);
 
 #ifdef GUEST_ARM64
 // ARM64-specific memory management syscalls
@@ -103,6 +105,10 @@ dword_t sys_preadv(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count,
                    dword_t pos_l, dword_t pos_h);
 dword_t sys_pwritev(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count,
                     dword_t pos_l, dword_t pos_h);
+dword_t sys_preadv2(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count,
+                    dword_t pos_l, dword_t pos_h, dword_t flags);
+dword_t sys_pwritev2(fd_t fd_no, addr_t iovec_addr, dword_t iovec_count,
+                     dword_t pos_l, dword_t pos_h, dword_t flags);
 dword_t sys_ioctl(fd_t f, dword_t cmd, addr_t arg);
 dword_t sys_fcntl(fd_t f, dword_t cmd, addr_t arg);
 dword_t sys_fcntl32(fd_t fd, dword_t cmd, addr_t arg);
@@ -131,6 +137,8 @@ int_t sys_epoll_wait(fd_t epoll, addr_t events_addr, int_t max_events, int_t tim
 int_t sys_epoll_pwait(fd_t epoll_f, addr_t events_addr, int_t max_events, int_t timeout, addr_t sigmask_addr, dword_t sigsetsize);
 
 int_t sys_eventfd2(uint_t initval, int_t flags);
+int_t sys_pidfd_open(pid_t_ pid, uint_t flags);
+void pidfd_notify_exit(pid_t_ pid);
 int_t sys_eventfd(uint_t initval);
 
 fd_t sys_inotify_init1(int_t flags);

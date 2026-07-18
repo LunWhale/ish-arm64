@@ -80,7 +80,10 @@ void mem_destroy(struct mem *mem) {
         mem->reservations = r->next;
         free(r);
     }
+    // [T-ish-mm-double-destroy-crash] Null out after free so a racing
+    // second cleanup path can't dereference a stale pointer.
     asbestos_free(mem->mmu.asbestos);
+    mem->mmu.asbestos = NULL;
     pt_node_free(mem->pgdir, 0);
     mem->pgdir = NULL;
     write_wrunlock(&mem->lock);
@@ -250,7 +253,13 @@ static page_t pt_find_hole_from(struct mem *mem, pages_t size, page_t start) {
 // that don't fit in the low region. Used for Wasm guard regions etc.
 static page_t pt_find_hole_high(struct mem *mem, pages_t size) {
     // Search from 0x100000 (4GB) upward to USER_ADDR_MAX_PAGE
-    // Use a simple strategy: scan upward looking for unallocated L0 subtrees
+    // Use a simple strategy: scan upward looking for unallocated L0 subtrees.
+    // A subtree with no page-table nodes can still be covered by a lazy
+    // mem_reservation (e.g. the 512GB JSC gigacage / V8 cage), which does NOT
+    // create pt_node children. So we must also treat reservation-covered
+    // subtrees as occupied, otherwise we'd hand out a hole that
+    // hole_overlaps_reservation() then rejects, and the mmap fails with ENOMEM
+    // even though there's plenty of free VA above the reservation.
     page_t page = 0x100000; // Start at 4GB
     page_t hole_start = page;
     pages_t hole_size = 0;
@@ -259,25 +268,25 @@ static page_t pt_find_hole_high(struct mem *mem, pages_t size) {
         int i0 = PT_INDEX(page, 0);
         struct pt_node *l0 = mem->pgdir;
         struct pt_node *l1 = l0 ? l0->children[i0] : NULL;
-        if (l1 == NULL) {
-            // Entire L0 subtree is empty (2^27 pages = 512GB)
-            page_t l0_size = (page_t)1 << (PT_BITS * 3);
-            page_t l0_base = (page_t)i0 << (PT_BITS * 3);
+        page_t l0_size = (page_t)1 << (PT_BITS * 3);
+        page_t l0_base = (page_t)i0 << (PT_BITS * 3);
+        page_t subtree_end = l0_base + l0_size;
+        if (subtree_end > USER_ADDR_MAX_PAGE)
+            subtree_end = USER_ADDR_MAX_PAGE;
+        // Occupied if a page table exists OR a reservation overlaps this subtree.
+        bool occupied = (l1 != NULL) ||
+            hole_overlaps_reservation(mem, l0_base, l0_size);
+        if (!occupied) {
             if (hole_size == 0) hole_start = l0_base < page ? page : l0_base;
-            page_t subtree_end = l0_base + l0_size;
-            if (subtree_end > USER_ADDR_MAX_PAGE)
-                subtree_end = USER_ADDR_MAX_PAGE;
             hole_size = subtree_end - hole_start;
             if (hole_size >= size)
                 return hole_start;
             page = subtree_end;
             continue;
         }
-        // L1 exists — something is mapped here, skip
+        // Something is mapped/reserved here — reset the running hole and skip.
         hole_size = 0;
-        page_t l0_size = (page_t)1 << (PT_BITS * 3);
-        page_t l0_base = (page_t)i0 << (PT_BITS * 3);
-        page = l0_base + l0_size;
+        page = subtree_end;
     }
     return BAD_PAGE;
 }
@@ -382,7 +391,15 @@ void mem_init(struct mem *mem) {
 void mem_destroy(struct mem *mem) {
     write_wrlock(&mem->lock);
     pt_unmap_always(mem, 0, MEM_PAGES);
+    // [T-ish-mm-double-destroy-crash] Freed asbestos MUST also be nulled out.
+    // Under CLONE_VM exit_group races (multi-threaded python3 during MCP
+    // teardown), the same struct mm can be reached by a second cleanup path
+    // once refcount has already hit zero — the pt_unmap_always above would
+    // then dereference a freed asbestos and crash in asbestos_invalidate_range
+    // with EXC_BAD_ACCESS. Nulling here + NULL-guarding the invalidate calls
+    // turns the race into a safe no-op instead of a segfault.
     asbestos_free(mem->mmu.asbestos);
+    mem->mmu.asbestos = NULL;
     while (mem->reservations) {
         struct mem_reservation *r = mem->reservations;
         mem->reservations = r->next;
@@ -638,9 +655,14 @@ int pt_map_nothing(struct mem *mem, page_t start, pages_t pages, unsigned flags)
     return pt_map(mem, start, pages, memory, 0, flags | P_ANONYMOUS);
 }
 
+// W^X stat: stores that hit a P_CODE page and unprotected it (see mem_ptr).
+_Atomic uint64_t st_wx_clears = 0;
+
 // Metadata flags that must be preserved across mprotect — they track
-// allocation type and state, not user-visible protection bits.
-#define P_META_FLAGS (P_ANONYMOUS | P_GROWSDOWN | P_COW | P_SHARED)
+// allocation type and state, not user-visible protection bits. P_CODE must
+// survive mprotect: making a compiled code page writable doesn't remove the
+// need to invalidate its blocks on the first store.
+#define P_META_FLAGS (P_ANONYMOUS | P_GROWSDOWN | P_COW | P_SHARED | P_CODE)
 
 int pt_set_flags(struct mem *mem, page_t start, pages_t pages, int flags) {
     for (page_t page = start; page < start + pages; page++) {
@@ -715,7 +737,9 @@ int pt_copy_on_write(struct mem *src, struct mem *dst, page_t start, page_t page
         struct pt_entry *dst_entry = mem_pt_new(dst, page);
         dst_entry->data = entry->data;
         dst_entry->offset = entry->offset;
-        dst_entry->flags = entry->flags;
+        // Don't inherit P_CODE: the child's asbestos has no blocks for this
+        // page yet; it re-marks on its own first compile.
+        dst_entry->flags = entry->flags & ~P_CODE;
 #if ANON_MMAP_LIMIT_PAGES > 0
         if (entry->flags & P_ANONYMOUS)
             anon_copied++;
@@ -741,6 +765,14 @@ int pt_copy_on_write(struct mem *src, struct mem *dst, page_t start, page_t page
 
 static void mem_changed(struct mem *mem) {
     __atomic_add_fetch(&mem->mmu.changes, 1, __ATOMIC_RELEASE);
+}
+
+// Public wrapper: bump the memory-change generation so other threads' TLB
+// coherence checks force a re-translate. Used by paths that mutate page
+// backing without going through pt_map/pt_unmap (e.g. madvise MADV_DONTNEED
+// zeroing a page in place).
+void mem_changed_pub(struct mem *mem) {
+    mem_changed(mem);
 }
 
 // This version will return NULL instead of making necessary pagetable changes.
@@ -786,7 +818,17 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
         rlim_t_ stack_limit = rlimit(RLIMIT_STACK_);
         if (stack_limit != RLIM_INFINITY_) {
             pages_t stack_pages = guard_page - page;
-            if ((uint64_t)stack_pages * PAGE_SIZE > stack_limit)
+            // Allow the same headroom native Linux effectively gives. Userspace
+            // (JSC/bun, glibc) derives its stack bound as SP_at_entry -
+            // RLIMIT_STACK, while we count from the stack VMA top (guard page),
+            // which sits args/env/auxv-sized bytes ABOVE that SP. Linux also
+            // grants the initial stack VMA 128KB of expansion headroom
+            // (setup_arg_pages: stack_expand = 131072). Without the slack, JS
+            // recursion that runs right up to JSC's believed bound faults one
+            // page BELOW our enforced bottom before JSC can raise RangeError —
+            // deterministic SIGSEGV at stack_top - RLIMIT_STACK (bun/claude).
+            uint64_t slack = 131072;
+            if ((uint64_t)stack_pages * PAGE_SIZE > stack_limit + slack)
                 return NULL;
         }
 
@@ -812,12 +854,12 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
         // block without our thread needing to return and risk the
         // retry SP compounding.
         read_wrunlock(&mem->lock);
-        // BLOCKING write_wrlock (not trylock) in BOTH JIT and non-JIT
-        // contexts. The earlier concern was "JIT context other threads
-        // hold mem->lock READ — blocking would deadlock"; actually the
-        // JIT-context thread released its own read lock just above and
-        // other threads release their read locks on each JIT block
-        // boundary. Blocking here waits at most one JIT cycle.
+        // write_wrlock here uses a bounded trylock-spin that falls back to a
+        // blocking acquire (see __write_wrlock in util/sync.h). We released our
+        // own read lock just above, and other threads release theirs on each
+        // JIT block boundary, so a reader-free window normally appears within
+        // the spin budget; if it doesn't, the blocking fallback still
+        // guarantees forward progress (waiting at most about one JIT cycle).
         //
         // Returning NULL → INT_GPF from this path is catastrophic for
         // growsdown: INT_GPF retry re-enters the JIT block from the
@@ -845,15 +887,24 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
         // haven't been touched yet, which later store instructions then
         // fault on. The SIGSEGV handler runs on the same shallow stack
         // and recursively faults, corrupting PC to 0 (infinite loop).
-        // Cap expansion at 16 pages (64KB) to bound accidental
-        // expansion when a wild pointer just happens to fall into a
-        // growsdown region.
+        //
+        // CRITICAL: the fault page `page` MUST always be mapped, otherwise
+        // mem_pt(page) below returns NULL and the faulting store lands on
+        // unmapped memory — silently corrupting the frame. The old cap
+        // moved grow_start UP toward the stack, so a fault more than
+        // max_grow pages below the mapped stack (e.g. a single
+        // `sub sp, sp, #0x30000; str [sp]` — a >256KB frame faulting ~48
+        // pages down) left the fault page itself unmapped. Cap instead how
+        // far ABOVE the fault page we pre-map, to bound accidental
+        // expansion when a wild pointer falls into a growsdown region; the
+        // gap between the fault page and the stack, if any, grows later on
+        // demand. The fault page itself is never dropped.
         {
-            const pages_t max_grow = 16;
+            const pages_t max_grow = 256;   // pre-map window (1 MB)
             pages_t grow_end = p; // first already-mapped page
             pages_t grow_start = page;
             if ((pages_t)(grow_end - grow_start) > max_grow)
-                grow_start = grow_end - max_grow;
+                grow_end = grow_start + max_grow; // keep fault page, cap upward
             pages_t grow_count = grow_end - grow_start;
 #if ANON_MMAP_LIMIT_PAGES > 0
             atomic_fetch_add(&anon_page_count, grow_count);
@@ -888,6 +939,16 @@ check_reservation: ;
     }
 
 have_entry:
+    // Diagnostic write watchpoint: host-side write acquisitions (user_write,
+    // madvise zeroing, CoW) bypass the guest store gadgets — record them too.
+    if (type == MEM_WRITE || type == MEM_WRITE_PTRACE) {
+        extern volatile addr_t g_watch_pages[2];
+        if (g_watch_pages[0] && ((addr & ~0xfffULL) == g_watch_pages[0] ||
+                                 (addr & ~0xfffULL) == g_watch_pages[1])) {
+            extern void watch_record_memptr(uint64_t addr);
+            watch_record_memptr(addr);
+        }
+    }
     if (entry != NULL && (type == MEM_WRITE || type == MEM_WRITE_PTRACE)) {
         // if page is unwritable, well tough luck
         if (type != MEM_WRITE_PTRACE && !(entry->flags & P_WRITE))
@@ -898,20 +959,36 @@ have_entry:
         }
         // get rid of any compiled blocks in this page
         asbestos_invalidate_page(mem->mmu.asbestos, page);
+        // W^X: the page holds compiled guest code. Unprotect it and bump
+        // mmu->changes so every thread's cached writable TLB entry for the
+        // page goes stale — later stores keep coming back through here while
+        // blocks exist. The invalidate above happened first, so a compile
+        // racing with this store either finished inserting (its block was
+        // just invalidated) or is still reading bytes (it will see the bump /
+        // cleared flag and discard its possibly-torn block).
+        if (__atomic_load_n(&entry->flags, __ATOMIC_RELAXED) & P_CODE) {
+            __atomic_fetch_and(&entry->flags, ~P_CODE, __ATOMIC_ACQ_REL);
+            atomic_fetch_add_explicit(&st_wx_clears, 1, memory_order_relaxed);
+            mem_changed(mem);
+            // Order the bump before the caller's store: a compiling thread
+            // that observes the (torn) store bytes must also observe the
+            // bump when it verifies.
+            __atomic_thread_fence(__ATOMIC_SEQ_CST);
+        }
         // if page is cow, ~~milk~~ copy it
         if (entry->flags & P_COW) {
             void *copy = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
                     MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
 
             read_wrunlock(&mem->lock);
-            // BLOCKING write_wrlock (not trylock) in both JIT and
-            // non-JIT contexts. Returning NULL → INT_GPF retry re-runs
-            // the entire JIT block from the start; if the block
-            // contains a prologue like `sub sp, sp, #N` before the
-            // faulting store, each retry decrements SP again,
-            // corrupting the frame layout. Blocking briefly waits for
-            // other readers to release their per-block read locks,
-            // which is bounded (~one JIT cycle).
+            // write_wrlock uses a bounded trylock-spin with a blocking
+            // fallback (util/sync.h). We must get the write lock rather than
+            // return NULL → INT_GPF: retry would re-run the entire JIT block
+            // from the start, and a prologue like `sub sp, sp, #N` before the
+            // faulting store would decrement SP again each retry, corrupting
+            // the frame layout. The spin catches the common case where other
+            // readers release their per-block read locks quickly; the fallback
+            // guarantees we still acquire (bounded ~one JIT cycle).
             write_wrlock(&mem->lock);
             // Re-fetch entry after lock upgrade — another thread may have
             // already resolved this CoW while we were waiting for the lock.
@@ -942,6 +1019,47 @@ have_entry:
     return ptr;
 }
 
+// Diagnostic: racy unlocked peek of a guest u32 for the write watchpoint.
+uint32_t mem_watch_peek32_mem(struct mem *mem, uint64_t addr) {
+    if (mem == NULL)
+        return 0xdead0001;
+    struct pt_entry *entry = mem_pt(mem, PAGE(addr));
+    if (entry == NULL || entry->data == NULL)
+        return 0xdead0002;
+    return *(uint32_t *)((char *)entry->data->data + entry->offset + PGOFFSET(addr));
+}
+uint32_t mem_watch_peek32(uint64_t addr) {
+    if (current == NULL)
+        return 0xdead0001;
+    return mem_watch_peek32_mem(current->mem, addr);
+}
+
+// W^X code-page protection: mark `page` as containing compiled guest code.
+// Caller must hold the mem read lock (JIT context). Returns 1 if the page
+// transitioned to code — mmu->changes is bumped so every thread's cached
+// writable TLB entry for the page goes stale and the next store faults into
+// mem_ptr (which invalidates the page's blocks and unprotects it). Returns 0
+// if already marked, -1 if the page isn't mapped.
+int mmu_mark_code_page(struct mmu *mmu, page_t page) {
+    struct mem *mem = container_of(mmu, struct mem, mmu);
+    struct pt_entry *entry = mem_pt(mem, page);
+    if (entry == NULL)
+        return -1;
+    unsigned old = __atomic_fetch_or(&entry->flags, P_CODE, __ATOMIC_ACQ_REL);
+    if (old & P_CODE)
+        return 0;
+    mem_changed(mem);
+    return 1;
+}
+
+// Whether the P_CODE mark placed by mmu_mark_code_page is still there. A
+// store that raced with compilation went through mem_ptr and cleared it.
+bool mmu_code_page_intact(struct mmu *mmu, page_t page) {
+    struct mem *mem = container_of(mmu, struct mem, mmu);
+    struct pt_entry *entry = mem_pt(mem, page);
+    return entry != NULL && (__atomic_load_n(&entry->flags, __ATOMIC_ACQUIRE) & P_CODE);
+}
+
 static void *mem_mmu_translate(struct mmu *mmu, addr_t addr, int type) {
     // Use mem_ptr instead of mem_ptr_nofault to properly handle:
     // 1. Copy-on-write (COW) pages - need to copy before write
@@ -950,7 +1068,14 @@ static void *mem_mmu_translate(struct mmu *mmu, addr_t addr, int type) {
 }
 
 static void *mem_mmu_translate_write_nofault(struct mmu *mmu, addr_t addr) {
-    return mem_ptr_nofault(container_of(mmu, struct mem, mmu), addr, MEM_WRITE);
+    struct mem *mem = container_of(mmu, struct mem, mmu);
+    // W^X: never stamp a writable TLB entry for a page holding compiled code.
+    // Stores must take the write-miss path (mem_ptr), which invalidates the
+    // page's blocks and clears P_CODE first.
+    struct pt_entry *entry = mem_pt(mem, PAGE(addr));
+    if (entry != NULL && (__atomic_load_n(&entry->flags, __ATOMIC_ACQUIRE) & P_CODE))
+        return NULL;
+    return mem_ptr_nofault(mem, addr, MEM_WRITE);
 }
 
 static struct mmu_ops mem_mmu_ops = {

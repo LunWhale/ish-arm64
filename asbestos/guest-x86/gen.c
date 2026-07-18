@@ -31,7 +31,7 @@ static void gen(struct gen_state *state, unsigned long thing) {
     state->block->code[state->size++] = thing;
 }
 
-void gen_start(addr_t addr, struct gen_state *state) {
+bool gen_start(addr_t addr, struct gen_state *state) {
     state->capacity = FIBER_BLOCK_INITIAL_CAPACITY;
     state->size = 0;
     state->ip = addr;
@@ -41,8 +41,11 @@ void gen_start(addr_t addr, struct gen_state *state) {
     state->block_patch_ip = 0;
 
     struct fiber_block *block = malloc(sizeof(struct fiber_block) + state->capacity * sizeof(unsigned long));
+    if (block == NULL)
+        return false;
     state->block = block;
     block->addr = addr;
+    return true;
 }
 
 void gen_end(struct gen_state *state) {

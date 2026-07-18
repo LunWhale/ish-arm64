@@ -72,6 +72,7 @@ struct cpu_state {
     // Exclusive monitor for LDXR/STXR atomicity
     uint64_t excl_addr;   // Guest address from last LDXR (0xFFFFFFFF = invalid)
     uint64_t excl_val;    // Value loaded by last LDXR
+    uint64_t excl_val2;   // Second value loaded by last LDXP (pair exclusives)
 
     // For the page fault handler
     addr_t segfault_addr;

@@ -27,6 +27,7 @@ static int proc_show_stat(struct proc_entry *UNUSED(entry), struct proc_data *bu
 
 static int proc_show_cpuinfo(struct proc_entry *UNUSED(entry), struct proc_data *buf) {
     unsigned cpus = sysconf(_SC_NPROCESSORS_ONLN);
+    { const char *e = getenv("ISH_FAKE_NCPU"); if (e) { int n = atoi(e); if (n > 0) cpus = n; } }
     for (unsigned i = 0; i < cpus; i++) {
         proc_printf(buf, "processor\t: %u\n", i);
 #ifdef GUEST_ARM64

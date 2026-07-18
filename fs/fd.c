@@ -19,6 +19,7 @@ struct fd *fd_create(const struct fd_ops *ops) {
     fd->mount = NULL;
     fd->offset = 0;
     list_init(&fd->poll_fds);
+    list_init(&fd->pidfd_links);
     lock_init(&fd->poll_lock);
     lock_init(&fd->lock);
     cond_init(&fd->cond);

@@ -1406,6 +1406,31 @@ atomic_cas_segfault:
     gret
 
 /*
+ * IC IVAU — guest invalidates its instruction cache after modifying code.
+ * The architectural contract is "code at [Xt] changed; refetch it", so we
+ * must drop any translated blocks for that page or the JIT keeps running
+ * the stale pre-patch translation (JSC repatches its JIT code in place).
+ * Code stream: [gadget addr][rt]
+ */
+.gadget ic_ivau
+    ldr x8, [_pc]
+    add _pc, _pc, #8
+    and x9, x8, #0x1f          // rt
+    add x10, _cpu, #CPU_x0
+    cmp x9, #31
+    b.eq 1f
+    ldr x11, [x10, x9, lsl #3]
+    b 2f
+1:  mov x11, #0
+2:
+    save_c
+    sub x0, _tlb, #TLB_entries
+    mov x1, x11                // VA to invalidate
+    bl NAME(c_ic_ivau)
+    restore_c
+    gret
+
+/*
  * Base register update gadget for post/pre-indexed addressing
  * Code stream: [gadget addr][rn | offset<<8]
  * Updates: Rn = Rn + offset
@@ -3234,15 +3259,27 @@ ldxp_c_64:
     bl NAME(c_ldp64)
 ldxp_c_done:
     mov w19, w0                  // save result
-    ldr x20, [sp]               // val1
+    // Load outputs with the right width: c_ldp32 writes 32-bit values into
+    // the 8-byte slots, whose upper halves are uninitialized stack garbage.
+    cmp x26, #3
+    b.eq 5f
+    ldr w20, [sp]               // val1 (32-bit, zero-extended)
+    ldr w21, [sp, #8]           // val2
+    b 6f
+5:  ldr x20, [sp]               // val1 (64-bit)
     ldr x21, [sp, #8]           // val2
-    add sp, sp, #16
+6:  add sp, sp, #16
     restore_c
     mov _addr, x24               // restore _addr
 
     // Check for segfault
     cmn w19, #1
     b.eq ldxp_c_segfault
+
+    // Arm the exclusive monitor with the loaded pair so STXP can CAS on it.
+    str x24, [_cpu, #CPU_excl_addr]
+    str x20, [_cpu, #CPU_excl_val]
+    str x21, [_cpu, #CPU_excl_val2]
 
     // Store to Rt
     add x9, _cpu, #CPU_x0
@@ -3259,4 +3296,226 @@ ldxp_c_segfault:
     strb wzr, [_cpu, #CPU_segfault_was_write]
     mov w0, #INT_GPF
     b fiber_exit
+
+/*
+ * STXP via C helper — a TRUE atomic pair-exclusive store.
+ * Code stream: [gadget addr][rt | (rt2 << 8) | (rs << 16) | (size << 24)]
+ * Expects _addr = guest address (from calc_addr_imm).
+ * Checks the exclusive monitor armed by LDXP, then CASes the whole pair
+ * (64-bit CAS for W pairs, 128-bit CAS for X pairs) against the loaded
+ * values. Rs = 0 on success, 1 on failure. Never a plain store: emulating
+ * STXP as store-pair+always-success tears lock-free algorithms under
+ * threads (observed: JSC concurrent-JIT CodeBlock corruption in bun).
+ */
+.gadget stxp_c
+    ldr x22, [_pc]
+    add _pc, _pc, #8
+    and x23, x22, #0x1f         // rt
+    ubfx x25, x22, #8, #5       // rt2
+    ubfx x27, x22, #16, #5      // rs
+    ubfx x26, x22, #24, #2      // size
+    mov x24, _addr               // save guest address
+
+    // Check exclusive monitor: does excl_addr match current address?
+    ldr x8, [_cpu, #CPU_excl_addr]
+    cmp x8, _addr
+    b.ne stxp_c_fail
+
+    // Load new values from Rt / Rt2 (XZR reads as 0)
+    add x12, _cpu, #CPU_x0
+    cmp x23, #31
+    b.eq 1f
+    ldr x13, [x12, x23, lsl #3]
+    b 2f
+1:  mov x13, #0
+2:  cmp x25, #31
+    b.eq 3f
+    ldr x14, [x12, x25, lsl #3]
+    b 4f
+3:  mov x14, #0
+4:
+    save_c
+    // Argument setup order matters: x0 derives from _tlb (x2) and the
+    // expected values load via _cpu (x1), so fill x1/x2 args last.
+    sub x0, _tlb, #TLB_entries      // arg0: tlb struct pointer
+    ldr x3, [_cpu, #CPU_excl_val2]  // arg3: expected val2 (from LDXP)
+    mov x4, x13                     // arg4: new val1 (Rt)
+    mov x5, x14                     // arg5: new val2 (Rt2)
+    mov w6, w26                     // arg6: size
+    ldr x2, [_cpu, #CPU_excl_val]   // arg2: expected val1 (clobbers _tlb)
+    mov x1, x24                     // arg1: guest address (clobbers _cpu)
+    bl NAME(c_stxp_cas)
+    mov w19, w0                  // 0=success, 1=fail, -1=segfault
+    restore_c
+    mov _addr, x24
+
+    cmn w19, #1
+    b.eq stxp_c_segfault
+
+    // Invalidate exclusive monitor
+    movn x8, #0
+    str x8, [_cpu, #CPU_excl_addr]
+
+    // Rs = result (0 or 1)
+    cmp x27, #31
+    b.eq 5f
+    add x9, _cpu, #CPU_x0
+    and x8, x19, #0xff
+    str x8, [x9, x27, lsl #3]
+5:  gret
+
+stxp_c_fail:
+    // Monitor mismatch — store failed
+    movn x8, #0
+    str x8, [_cpu, #CPU_excl_addr]
+    cmp x27, #31
+    b.eq 6f
+    add x9, _cpu, #CPU_x0
+    mov x8, #1
+    str x8, [x9, x27, lsl #3]
+6:  gret
+
+stxp_c_segfault:
+    movn x8, #0
+    str x8, [_cpu, #CPU_excl_addr]
+    str x24, [_cpu, #CPU_segfault_addr]
+    mov w8, #1
+    strb w8, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+
+/*
+ * CASP (Compare-And-Swap Pair) via C helper — a TRUE 128-bit atomic CAS.
+ * Must be atomic over the full 16 bytes; splitting into two 64-bit CAS would
+ * tear the pair and break lock-free algorithms (e.g. libpas versioned field).
+ * Code stream: [gadget addr][rs | (rt << 8)]  (size is fixed 64-bit pair)
+ *   expected pair = (Rs, Rs+1), desired pair = (Rt, Rt+1)
+ * Expects _addr = guest address (from calc_addr_imm).
+ * Writes the old pair back into (Rs, Rs+1).
+ */
+.gadget atomic_casp
+    ldr x22, [_pc]
+    add _pc, _pc, #8
+    and x23, x22, #0x1f         // rs
+    ubfx x25, x22, #8, #5       // rt
+    mov x24, _addr              // save guest address
+
+    add x12, _cpu, #CPU_x0
+    // Load expected pair from Rs, Rs+1 (Rs must be even; Rs=31 => XZR pair=0)
+    cmp x23, #31
+    b.eq 1f
+    add x9, x23, #1
+    ldr x13, [x12, x23, lsl #3]   // exp_lo
+    ldr x14, [x12, x9, lsl #3]    // exp_hi
+    b 2f
+1:  mov x13, #0
+    mov x14, #0
+2:
+    // Load desired pair from Rt, Rt+1
+    cmp x25, #31
+    b.eq 3f
+    add x10, x25, #1
+    ldr x15, [x12, x25, lsl #3]   // des_lo
+    ldr x16, [x12, x10, lsl #3]   // des_hi
+    b 4f
+3:  mov x15, #0
+    mov x16, #0
+4:
+    save_c
+    sub sp, sp, #16               // space for old_lo, old_hi outputs
+    sub x0, _tlb, #TLB_entries    // tlb
+    mov x1, x24                   // guest address
+    mov x2, x13                   // exp_lo
+    mov x3, x14                   // exp_hi
+    mov x4, x15                   // des_lo
+    mov x5, x16                   // des_hi
+    mov x6, sp                    // &old_lo
+    add x7, sp, #8                // &old_hi
+    bl NAME(c_atomic_cas128)
+    mov w19, w0                   // result (0 ok, -1 segfault)
+    ldr x20, [sp]                 // old_lo
+    ldr x21, [sp, #8]             // old_hi
+    add sp, sp, #16
+    restore_c
+    mov _addr, x24
+
+    cmn w19, #1
+    b.eq atomic_casp_segfault
+
+    // Write old pair back into Rs, Rs+1 (skip if XZR)
+    add x9, _cpu, #CPU_x0
+    cmp x23, #31
+    b.eq 5f
+    add x10, x23, #1
+    str x20, [x9, x23, lsl #3]
+    str x21, [x9, x10, lsl #3]
+5:  gret
+
+atomic_casp_segfault:
+    str x24, [_cpu, #CPU_segfault_addr]
+    mov w8, #1
+    strb w8, [_cpu, #CPU_segfault_was_write]
+    mov w0, #INT_GPF
+    b fiber_exit
+
+// 32-bit CASP (sz=0): an 8-byte atomic over the {Ws,W(s+1)} / {Wt,W(t+1)}
+// register pairs. Ws is the low word, W(s+1) the high word of a 64-bit value.
+// We assemble the two 32-bit halves into 64-bit expected/desired words and do
+// a single 8-byte CAS via c_atomic_cas (size=3), then split the old value back
+// into Ws / W(s+1). This is NOT a 128-bit op (that would be the 64-bit CASP).
+.gadget atomic_casp32
+    ldr x22, [_pc]
+    add _pc, _pc, #8
+    and x23, x22, #0x1f         // rs
+    ubfx x25, x22, #8, #5       // rt
+    mov x24, _addr              // save guest address
+
+    add x12, _cpu, #CPU_x0
+    // expected = W(s+1):Ws  (Rs=31 => WZR pair = 0). The register file is
+    // 8-byte strided, so compute each element's byte address (reg<<3) and do a
+    // 32-bit load — `ldr w, [base, reg, lsl #3]` is not a legal addressing mode.
+    cmp x23, #31
+    b.eq 1f
+    add x9, x12, x23, lsl #3      // &Ws
+    ldr w13, [x9]                 // exp_lo (Ws, zero-extended)
+    ldr w15, [x9, #8]            // exp_hi (W(s+1))
+    orr x13, x13, x15, lsl #32
+    b 2f
+1:  mov x13, #0
+2:
+    // desired = W(t+1):Wt  (Rt=31 => WZR pair = 0)
+    cmp x25, #31
+    b.eq 3f
+    add x10, x12, x25, lsl #3     // &Wt
+    ldr w14, [x10]               // des_lo (Wt)
+    ldr w15, [x10, #8]          // des_hi (W(t+1))
+    orr x14, x14, x15, lsl #32
+    b 4f
+3:  mov x14, #0
+4:
+    sub sp, sp, #16
+    save_c
+    sub x0, _tlb, #TLB_entries    // tlb
+    mov x1, x24                   // guest address
+    mov x2, x13                   // expected (packed 64-bit)
+    mov x3, x14                   // desired  (packed 64-bit)
+    mov w4, #3                    // size = 3 (8 bytes)
+    add x5, sp, #0xa0             // &old
+    bl NAME(c_atomic_cas)
+    mov w19, w0
+    restore_c
+    mov _addr, x24
+    cbnz w19, atomic_casp_segfault
+    ldr x20, [sp]                 // old packed value
+    add sp, sp, #16
+
+    // Write old value back into Ws, W(s+1) (32-bit writes zero the top half)
+    cmp x23, #31
+    b.eq 5f
+    add x9, _cpu, #CPU_x0
+    add x9, x9, x23, lsl #3       // &Ws
+    str w20, [x9]                 // Ws = old_lo
+    lsr x20, x20, #32
+    str w20, [x9, #8]           // W(s+1) = old_hi
+5:  gret
 

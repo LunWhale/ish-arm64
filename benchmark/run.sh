@@ -107,6 +107,10 @@ suite_shell() {
     log "Shell benchmark (guest-side timing, startup excluded)"
     hr
 
+    # Purge stale blocking special files (see _purge_fakefs_special_files).
+    _purge_fakefs_special_files "$FAKEFS_X86" "x86"
+    _purge_fakefs_special_files "$FAKEFS_ARM64" "ARM64"
+
     # Push benchmark scripts + prebuilt binaries into both rootfs
     for asset in shellbench.sh cbench_lite.c; do
         [ -f "$ASSETS_DIR/$asset" ] || continue
@@ -496,6 +500,16 @@ COMPAT_TESTS=(
     "Skill|mcporter (mcporter 184★)|npx -y mcporter --help 2>&1 | head -1 >/dev/null"
     "Skill|meitu-cli (meitu-skills 119★)|npx -y meitu-cli@latest --help 2>&1 | head -1 >/dev/null"
     "Skill|node-edge-tts (edge-tts 29★)|npx -y node-edge-tts 2>&1 | head -1 | grep -q Usage"
+
+    # AI CLIs — bun/JSC (claude) and Rust/tokio (codex) runtimes. ARM64-only
+    # (no 32-bit builds of these tools exist); x86 FAIL is an expected
+    # architecture limitation, like automake/perl/go/nslookup above. The
+    # claude/codex tests verify the runtime reaches its application layer
+    # (auth/prompt) without deadlocking or crashing — no real API key needed.
+    "AICLIs|bun lang+stdlib|/root/.bun/bin/bun /tmp/bun_lang_test.js 2>&1 | grep -q BUN_JS_TEST_PASS"
+    "AICLIs|claude --version|claude --version"
+    "AICLIs|claude -p (no-auth)|claude -p hi 2>&1 | grep -qi \"not logged in\\|login\""
+    "AICLIs|codex --version|codex --version"
 )
 
 # Binary name → Alpine package mapping for auto-install
@@ -568,13 +582,44 @@ _ensure_packages() {
     fi
 }
 
+# Remove any leftover host special files (FIFOs/sockets) from a fakefs data
+# tree. iSH's realfs_open passes guest opens straight to a host openat() with
+# no O_NONBLOCK, so a stale FIFO (e.g. a `/tmp/idle_fifo` left by a crashed
+# run) makes that open() block forever in an uninterruptible host state —
+# wedging the ish process (SIGKILL can't reap it) and, because it holds the
+# meta.db lock, every subsequent run too. Purge them before each suite so one
+# stale artifact can't cascade into a machine-wide hang.
+_purge_fakefs_special_files() {
+    local fs_path="$1" label="$2"
+    [ -d "$fs_path/data" ] || return 0
+    local n
+    n=$(find "$fs_path/data" \( -type p -o -type s \) 2>/dev/null | wc -l | tr -d ' ')
+    if [ "${n:-0}" -gt 0 ]; then
+        log "Purging $n leftover FIFO/socket node(s) from $label fakefs"
+        find "$fs_path/data" \( -type p -o -type s \) -delete 2>/dev/null || true
+    fi
+}
+
 suite_compat() {
     log "Compatibility tests (x86 vs ARM64)"
     hr
 
+    # Purge stale blocking special files before anything touches the fakefs.
+    _purge_fakefs_special_files "$FAKEFS_X86" "x86"
+    _purge_fakefs_special_files "$FAKEFS_ARM64" "ARM64"
+
     # Auto-install missing packages on both architectures
     _ensure_packages "$ISH_X86" -f "$FAKEFS_X86" "x86"
     _ensure_packages "$ISH_ARM64" -f "$FAKEFS_ARM64" "ARM64"
+
+    # Push test assets used by COMPAT_TESTS into both rootfs (e.g. the bun
+    # language/stdlib conformance script). Deployed to both archs; x86 will
+    # still FAIL the bun test since bun isn't installed there.
+    for asset in bun_lang_test.js; do
+        [ -f "$ASSETS_DIR/$asset" ] || continue
+        cat "$ASSETS_DIR/$asset" | timeout 10 "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
+        cat "$ASSETS_DIR/$asset" | timeout 10 "$ISH_ARM64" -f "$FAKEFS_ARM64" /bin/sh -c "cat > /tmp/$asset" 2>/dev/null || true
+    done
     echo ""
 
     local total=${#COMPAT_TESTS[@]} n=0
@@ -590,8 +635,17 @@ suite_compat() {
 
         # Skill tests that exec `npx -y <pkg>` need a longer budget to spin
         # up Node + load the package; everything else gets the 15s default.
+        # AI CLIs need extra headroom for JIT cold-start (bun/JSC) and network
+        # diagnostics (claude -p connects to the API endpoint before printing
+        # the not-logged-in prompt).
         local t=15
         case "$cmd" in *"npx -y"*) t=60 ;; esac
+        case "$name" in
+            "bun lang+stdlib")              t=20 ;;    # JIT compile + lang/stdlib conformance, no network (~1s measured)
+            "codex --version")              t=20 ;;    # Rust binary, no network
+            "claude -p (no-auth)")          t=30 ;;    # JIT + network diagnostics
+            # "claude --version" keeps the 15s default (measured ~3-5s)
+        esac
 
         local xr ar
         if timeout "$t" "$ISH_X86" -f "$FAKEFS_X86" /bin/sh -c "$cmd" >/dev/null 2>&1; then

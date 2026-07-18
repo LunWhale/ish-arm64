@@ -6,7 +6,7 @@
 // #define DISABLE_RET_CACHE       1    // RET always returns to main loop
 // #define DISABLE_BLOCK_CHAINING  1    // All branches return to main loop
 // #define ENABLE_HIGHBIT_CHECK    1    // Check for dirty bits 32-63 after each insn
-// #define ENABLE_WRITE_WATCHPOINT  1    // Check every store against watched page
+// #define ENABLE_WRITE_WATCHPOINT  1    // Check every store against watched pages (arm via ISH_WATCH_PAGE/ISH_WATCH_PAGE2; ~4 insns per store when compiled in)
 // =================================
 
 // Interrupt types (from emu/interrupt.h)
@@ -106,11 +106,15 @@ _addr   .req x7    // Changed from x3/x4 to x7 to avoid conflict with guest low 
     // Write watchpoint: compare guest page against watched page
     // x7 = guest address at this point (before TLB translation)
     // g_watch_page_val is loaded from a nearby literal pool
-    adrp x8, NAME(g_watch_page_val)@PAGE
-    ldr x8, [x8, NAME(g_watch_page_val)@PAGEOFF]
+    adrp x8, NAME(g_watch_pages)@PAGE
+    add x8, x8, NAME(g_watch_pages)@PAGEOFF
+    ldp x8, x9, [x8]                  // watched pages 1 and 2
     cbz x8, 9f                        // skip if no watchpoint set
-    and x9, x7, #0xfffffffffffff000   // guest page
-    cmp x9, x8
+    and x10, x7, #0xfffffffffffff000  // guest page
+    cmp x10, x8
+    b.eq watch_hit_\id
+    cbz x9, 9f
+    cmp x10, x9
     b.eq watch_hit_\id
 9:
     .endif
@@ -144,6 +148,18 @@ _addr   .req x7    // Changed from x3/x4 to x7 to avoid conflict with guest low 
     .endif
 
     cmp x8, x10
+    b.ne handle_miss_\id
+
+    // Coherence check: this cached entry's host pointer is only valid while
+    // mmu->changes still equals the generation captured when it was filled.
+    // If another thread remapped the page (CoW/mmap/munmap) mmu->changes has
+    // advanced and data_minus_addr points at the stale host backing — treat
+    // it as a miss and re-translate. Fixes JSC reading a null methodTable /
+    // stale Structure after a concurrent GC/allocator remap.
+    ldr x10, [x9, #TLB_ENTRY_gen]
+    ldr x8, [_tlb, #(-TLB_entries+TLB_mmu)]
+    ldr x8, [x8, #MMU_changes]
+    cmp x10, x8
     b.ne handle_miss_\id
 
     ldr x10, [x9, #TLB_ENTRY_data_minus_addr]

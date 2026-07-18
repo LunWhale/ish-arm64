@@ -333,8 +333,18 @@ int_t sys_timer_create(dword_t clock, addr_t sigevent_addr, addr_t timer_addr) {
     if (clockid_to_real(clock, &real_clockid))
         return _EINVAL;
     struct sigevent_ sigev;
-    if (user_get(sigevent_addr, sigev))
+    if (sigevent_addr == 0) {
+        // NULL sigevent: POSIX/Linux default is SIGEV_SIGNAL delivering SIGALRM
+        // to the process, with sival_int = timer id. musl's timer_create passes
+        // NULL for the common `timer_create(clock, NULL, &id)` form (e.g.
+        // coreutils `timeout`). iSH used to user_get(NULL) → EFAULT here, so
+        // every such call failed spuriously.
+        sigev = (struct sigevent_){0};
+        sigev.method = SIGEV_SIGNAL_;
+        sigev.signo = SIGALRM_;
+    } else if (user_get(sigevent_addr, sigev)) {
         return _EFAULT;
+    }
     if (sigev.method != SIGEV_SIGNAL_ && sigev.method != SIGEV_NONE_ && sigev.method != SIGEV_THREAD_ID_)
         return _EINVAL;
 

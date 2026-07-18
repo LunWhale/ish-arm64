@@ -7,6 +7,8 @@
 #include <assert.h>
 #include <setjmp.h>
 #include <errno.h>
+#include <time.h>
+#include <stdio.h>
 #include "misc.h"
 #include "debug.h"
 
@@ -41,9 +43,28 @@ static inline void lock_init(lock_t *lock) {
 #else
 #define LOCK_INITIALIZER {PTHREAD_MUTEX_INITIALIZER, 0}
 #endif
+extern int g_lock_slow_trace; // set from ISH_LOCK_TRACE at startup
 static inline void __lock(lock_t *lock, __attribute__((unused)) const char *file, __attribute__((unused)) int line) {
+    if (g_lock_slow_trace) {
+        struct timespec _s; clock_gettime(CLOCK_MONOTONIC, &_s);
+        int spun = 0;
+        while (pthread_mutex_trylock(&lock->m) != 0) {
+            struct timespec _b = {0, 200000}; nanosleep(&_b, NULL);
+            struct timespec _n; clock_gettime(CLOCK_MONOTONIC, &_n);
+            long ms = (_n.tv_sec-_s.tv_sec)*1000 + (_n.tv_nsec-_s.tv_nsec)/1000000;
+            if (ms > 3000 && !spun) {
+                spun = 1;
+                extern int current_pid(void);
+                fprintf(stderr, "[lockslow] pid=%d waiting >3s at %s:%d for lock=%p\n",
+                        current_pid(), file, line, (void*)lock);
+            }
+        }
+        lock->owner = pthread_self();
+        goto done;
+    }
     pthread_mutex_lock(&lock->m);
     lock->owner = pthread_self();
+done:;
 #if LOCK_DEBUG
     assert(lock->debug.initialized);
     assert(!lock->debug.file && "Attempting to recursively lock");
@@ -144,7 +165,43 @@ static inline void read_wrunlock(wrlock_t *lock) {
     if (pthread_rwlock_unlock(&lock->l) != 0) __builtin_trap();
 }
 static inline void __write_wrlock(wrlock_t *lock, const char *file, int line) {
-    if (pthread_rwlock_wrlock(&lock->l) != 0) __builtin_trap();
+    // Acquire the write lock without letting a *waiting* writer freeze out
+    // readers (which macOS's writer-preferring pthread_rwlock does). We spin
+    // on trywrlock instead of a blocking wrlock: while we're merely retrying
+    // (not queued as a waiter), concurrent readers can still take the lock.
+    //
+    // This is load-bearing for the JIT: task_run_current holds mem->lock as a
+    // READER for the duration of each JIT quantum and re-acquires it every
+    // ~1024 blocks. Under a blocking writer-preferring wrlock, one thread
+    // requesting the write lock (mmap/munmap/CoW, e.g. JSC's GC sweep) freezes
+    // EVERY other JIT thread at its next read_wrlock — and if the writer is
+    // itself waiting on those threads to reach a GC safepoint, the whole VM
+    // deadlocks (observed intermittently in claude-cli startup). Spinning
+    // keeps readers live so they can progress and release, letting the writer
+    // eventually win a trylock.
+    //
+    // We must NEVER fall back to a blocking pthread_rwlock_wrlock here. That is
+    // writer-preferring on macOS/iOS: the moment this thread queues as a waiter,
+    // every subsequent reader blocks until we run — and if we (the writer, e.g.
+    // JSC's GC doing an mmap/munmap sweep) are ourselves waiting for those
+    // reader threads to reach a GC safepoint, the whole VM deadlocks. That is
+    // exactly the intermittent claude/bun startup hang this trylock-spin exists
+    // to prevent. It reproduces far more easily on-device (iOS): slower cores
+    // mean JIT readers hold mem->lock across a longer quantum, so any bounded
+    // spin budget is more likely to be exhausted and hit the blocking fallback.
+    //
+    // The original concern with an unbounded trylock-spin was burning a full
+    // core (livelock) while readers are continuously present. We avoid that
+    // WITHOUT ever blocking: back off to a steady sleep so the spinning writer
+    // yields the CPU each iteration (it is not a busy-spin), and readers keep
+    // making progress and releasing until the writer wins a trylock. This keeps
+    // forward progress for readers guaranteed and the writer non-blocking.
+    struct timespec _ts = {0, 1000}; // 1us initial backoff, grows to a steady sleep
+    while (pthread_rwlock_trywrlock(&lock->l) != 0) {
+        nanosleep(&_ts, NULL);
+        if (_ts.tv_nsec < 100000) // ramp up to a 100us steady sleep (yields CPU)
+            _ts.tv_nsec *= 2;
+    }
     assert(lock->val == 0);
     lock->val = -1;
     lock->file = file;

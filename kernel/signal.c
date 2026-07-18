@@ -53,8 +53,13 @@ static int signal_action(struct sighand *sighand, int sig) {
     }
 }
 
+// Real-time signals (>= SIGRTMIN) queue: each delivery is a distinct instance
+// and must not be coalesced. Standard signals coalesce (one pending bit).
+// JSC's thread resume path uses RT signals (RTMIN/RT_1/RT_2); dropping a
+// duplicate as "already pending" loses a resume and wedges the GC handshake.
+#define SIGRTMIN_ 32
 static void deliver_signal_unlocked(struct task *task, int sig, struct siginfo_ info) {
-    if (sigset_has(task->pending, sig))
+    if (sig < SIGRTMIN_ && sigset_has(task->pending, sig))
         return;
 
     sigset_add(&task->pending, sig);
@@ -465,6 +470,29 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
     // ARM64 only provides __kernel_rt_sigreturn in the VDSO.
     // Always use an rt_sigframe for signal delivery.
     need_siginfo = true;
+
+    // SA_RESTART: if this handler asked for automatic restart and the syscall
+    // we're interrupting returned EINTR, rewind PC to the `svc #0` instruction
+    // (4 bytes back) and restore the original first argument (x0), which the
+    // return value clobbered. The signal frame we save next captures this
+    // rewound PC, so when the handler returns via rt_sigreturn the syscall
+    // re-executes instead of surfacing EINTR. Load-bearing for JSC's SIGPWR
+    // GC-safepoint handshake, which registers SA_RESTART and otherwise
+    // livelocks re-signalling a thread whose futex keeps returning EINTR.
+    // syscall_restartable is a sticky flag: it stays set if an earlier EINTR
+    // futex/epoll/read/write delivered a signal whose handler lacked SA_RESTART
+    // (no rewind happened). Guarding the rewind on the flag alone is unsafe —
+    // a later non-syscall interrupt (INT_TIMER every ~1024 blocks, INT_GPF on
+    // demand-map/CoW) runs receive_signals() too, and if a NEW SA_RESTART signal
+    // is pending it would rewind PC into the middle of ordinary code. Require
+    // cpu.pc to still equal the interrupted syscall's return PC (svc_addr+4), so
+    // the rewind can only fire when we truly are just past that svc.
+    if ((action->flags & SA_RESTART_) && current->syscall_restartable &&
+            current->cpu.pc == current->syscall_restart_pc) {
+        current->cpu.pc -= 4;
+        current->cpu.regs[0] = current->syscall_restart_arg0;
+        current->syscall_restartable = false;
+    }
 #endif
 
     // setup the frame
@@ -493,7 +521,18 @@ static void receive_signal(struct sighand *sighand, struct siginfo_ *info) {
     current->cpu.eip = sighand->action[info->sig].handler;
     dword_t sp = current->cpu.esp;
 #endif
-    if (sighand->altstack && !is_on_altstack(sp, sighand)) {
+    // Only switch to the alternate signal stack when the handler was
+    // registered with SA_ONSTACK. iSH previously switched whenever an altstack
+    // existed at all, ignoring the flag — that put EVERY handler on the
+    // altstack. JSC's GC installs an altstack (for SIGSEGV) but registers its
+    // SIGPWR thread-suspend handler WITHOUT SA_ONSTACK: that handler compares
+    // the interrupted sp against the thread's own stack bounds to decide
+    // whether to actually suspend (sem_post + sigsuspend) or bail. Running it
+    // on the altstack made sp fall outside those bounds, so the handler took
+    // the bail path and never parked — the GC suspender then re-signalled
+    // forever (the claude-cli startup deadlock).
+    if ((action->flags & SA_ONSTACK_) && sighand->altstack &&
+            !is_on_altstack(sp, sighand)) {
         sp = sighand->altstack + sighand->altstack_size;
     }
     if (xsave_extra) {

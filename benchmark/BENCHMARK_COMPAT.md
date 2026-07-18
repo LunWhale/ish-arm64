@@ -1,6 +1,6 @@
 # iSH Compatibility: x86 vs ARM64
 
-> **Generated:** 2026-05-16 11:22:16 | **Tests:** 223 | **Host:** macOS 26.4.1
+> **Generated:** 2026-07-11 09:06:37 | **Tests:** 227 | **Host:** macOS 26.5.1
 >
 > Both architectures use **fakefs** mode with virtual device nodes.
 > x86 rootfs = Alpine x86 minirootfs (busybox only)
@@ -12,8 +12,8 @@
 
 | Architecture | Pass | Fail | Rate |
 |:---:|:---:|:---:|:---:|
-| **x86** (Jitter) | 221 | 2 | **99%** |
-| **ARM64** (Asbestos JIT) | 223 | 0 | **100%** |
+| **x86** (Jitter) | 212 | 15 | **93%** |
+| **ARM64** (Asbestos JIT) | 227 | 0 | **100%** |
 
 ---
 
@@ -122,12 +122,12 @@
 | readelf | PASS | PASS |
 | pkg-config | PASS | PASS |
 | autoconf | PASS | PASS |
-| automake | PASS | PASS |
+| automake | FAIL | PASS |
 | bison | PASS | PASS |
 | flex | PASS | PASS |
 | m4 | PASS | PASS |
 
-> x86: 18/18 — ARM64: 18/18
+> x86: 17/18 — ARM64: 18/18
 
 ### Python (20 tests)
 
@@ -185,7 +185,7 @@
 
 | Test | x86 | ARM64 |
 |------|:---:|:---:|
-| perl | PASS | PASS |
+| perl | FAIL | PASS |
 | ruby | PASS | PASS |
 | php | PASS | PASS |
 | lua | PASS | PASS |
@@ -193,10 +193,10 @@
 | ash | PASS | PASS |
 | go version | PASS | PASS |
 | go env | PASS | PASS |
-| go compile | PASS | PASS |
+| go compile | FAIL | PASS |
 | clang | PASS | PASS |
 
-> x86: 10/10 — ARM64: 10/10
+> x86: 8/10 — ARM64: 10/10
 
 ### Network (17 tests)
 
@@ -355,23 +355,34 @@
 
 | Test | x86 | ARM64 |
 |------|:---:|:---:|
-| yt-dlp (youtube-watcher 287★) | PASS | PASS |
+| yt-dlp (youtube-watcher 287★) | FAIL | PASS |
 | ffmpeg (video-frames 115★) | PASS | PASS |
 | jq (trello 140★) | PASS | PASS |
 | ImageMagick convert (imagemagick) | PASS | PASS |
 | ImageMagick magick (imagemagick) | PASS | PASS |
 | ImageMagick smoke (vision/image-resize) | PASS | PASS |
-| matplotlib (chart-mpl/python-dataviz) | PASS | PASS |
-| pandas (pandas-skill) | PASS | PASS |
-| numpy (numpy) | PASS | PASS |
-| akshare (akshare-stock 76★) | PASS | PASS |
+| matplotlib (chart-mpl/python-dataviz) | FAIL | PASS |
+| pandas (pandas-skill) | FAIL | PASS |
+| numpy (numpy) | FAIL | PASS |
+| akshare (akshare-stock 76★) | FAIL | PASS |
 | khal (caldav-calendar 216★) | PASS | PASS |
 | vdirsyncer (caldav-calendar 216★) | PASS | PASS |
 | mcporter (mcporter 184★) | PASS | PASS |
 | meitu-cli (meitu-skills 119★) | PASS | PASS |
-| node-edge-tts (edge-tts 29★) | PASS | PASS |
+| node-edge-tts (edge-tts 29★) | FAIL | PASS |
 
-> x86: 15/15 — ARM64: 15/15
+> x86: 9/15 — ARM64: 15/15
+
+### AICLIs (4 tests)
+
+| Test | x86 | ARM64 |
+|------|:---:|:---:|
+| bun lang+stdlib | FAIL | PASS |
+| claude --version | FAIL | PASS |
+| claude -p (no-auth) | FAIL | PASS |
+| codex --version | FAIL | PASS |
+
+> x86: 0/4 — ARM64: 4/4
 
 ---
 
@@ -379,8 +390,21 @@
 
 ### x86 only
 
+- `automake` (Build)
+- `perl` (Lang)
+- `go compile` (Lang)
 - `nslookup localhost` (Network)
 - `nslookup 8.8.8.8` (Network)
+- `yt-dlp (youtube-watcher 287★)` (Skill)
+- `matplotlib (chart-mpl/python-dataviz)` (Skill)
+- `pandas (pandas-skill)` (Skill)
+- `numpy (numpy)` (Skill)
+- `akshare (akshare-stock 76★)` (Skill)
+- `node-edge-tts (edge-tts 29★)` (Skill)
+- `bun lang+stdlib` (AICLIs)
+- `claude --version` (AICLIs)
+- `claude -p (no-auth)` (AICLIs)
+- `codex --version` (AICLIs)
 
 ### ARM64 only
 

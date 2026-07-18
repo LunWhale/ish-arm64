@@ -27,9 +27,19 @@
 #include "emu/arch/arm64/decode.h"
 #include "emu/interrupt.h"
 
+// The Py_DECREF / Py_INCREF peephole-fusion fast paths below emit gadget_decref
+// / gadget_incref, whose implementations live in control.S. Those gadgets are
+// still a work in progress and are NOT yet committed, so building them in would
+// leave an undefined reference and break a clean-checkout link. Keep the fusions
+// disabled until the control.S side is finished and committed; then delete these
+// two defines (or build with -U...) to re-enable the optimization.
+#define DISABLE_DECREF_FUSION 1
+#define DISABLE_INCREF_FUSION 1
+
 // Gadget declarations
 extern void gadget_interrupt(void);
 extern void gadget_exit(void);
+extern void gadget_prebuilt_entry(void);
 extern void gadget_set_pc(void);
 extern void gadget_trace(void);
 extern void gadget_check_highbits(void);
@@ -473,6 +483,7 @@ extern void gadget_trn1_vec(void);         // TRN1 Vd, Vn, Vm (transpose even)
 extern void gadget_trn2_vec(void);         // TRN2 Vd, Vn, Vm (transpose odd)
 extern void gadget_zip1_vec(void);         // ZIP1 Vd, Vn, Vm (zip lower halves)
 extern void gadget_zip2_vec(void);         // ZIP2 Vd, Vn, Vm (zip upper halves)
+extern void gadget_rev16_vec(void);        // REV16 Vd, Vn (reverse bytes in 16-bit halfwords)
 extern void gadget_rev32_vec(void);        // REV32 Vd, Vn (reverse bytes in 32-bit elements)
 extern void gadget_rev64_vec(void);        // REV64 Vd, Vn (reverse bytes in 64-bit elements)
 extern void gadget_rbit_vec(void);         // RBIT Vd.xB, Vn.xB (reverse bits in each byte)
@@ -804,9 +815,12 @@ extern void gadget_writeback_addr(void);
 // Atomic memory operation helpers
 extern void gadget_atomic_rmw(void);
 extern void gadget_atomic_cas(void);
+extern void gadget_atomic_casp(void);
+extern void gadget_atomic_casp32(void);
 
 // Memory barrier (DMB ISH) for acquire/release semantics
 extern void gadget_dmb(void);
+extern void gadget_ic_ivau(void);          // IC IVAU: invalidate translated code for a page (SMC)
 
 // Load/store pair gadgets
 extern void gadget_ldp64(void);
@@ -884,7 +898,7 @@ static void gen_interrupt(struct gen_state *state, int interrupt_type) {
     gen(state, interrupt_type);
 }
 
-void gen_start(addr_t addr, struct gen_state *state) {
+bool gen_start(addr_t addr, struct gen_state *state) {
     state->capacity = FIBER_BLOCK_INITIAL_CAPACITY;
     state->size = 0;
     state->ip = addr;
@@ -896,8 +910,11 @@ void gen_start(addr_t addr, struct gen_state *state) {
     state->block_patch_ip = 0;
 
     struct fiber_block *block = malloc(sizeof(struct fiber_block) + state->capacity * sizeof(unsigned long));
+    if (block == NULL)
+        return false;
     state->block = block;
     block->addr = addr;
+    return true;
 }
 
 void gen_end(struct gen_state *state) {
@@ -932,6 +949,14 @@ void gen_exit(struct gen_state *state) {
     gen(state, state->ip);
 }
 
+// Emit a prebuilt-gadget block: one giant gadget (gadget_prebuilt_entry) that calls
+// the native spec_fn, then resumes at guest LR (emulating the function's ret).
+// Layout matches gadget_prebuilt_entry in control.S: [&gadget_prebuilt_entry][spec_fn].
+void gen_prebuilt_block(struct gen_state *state, void *spec_fn) {
+    gen(state, (unsigned long) gadget_prebuilt_entry);
+    gen(state, (unsigned long) spec_fn);
+}
+
 // Forward declarations
 static int gen_dp_imm(struct gen_state *state, uint32_t insn);
 static int gen_branch(struct gen_state *state, uint32_t insn);
@@ -957,6 +982,88 @@ int gen_step(struct gen_state *state, struct tlb *tlb) {
         return 0;
     }
     state->last_insn = insn;
+
+#ifndef DISABLE_DECREF_FUSION
+    // Peephole: fuse CPython's inlined Py_DECREF fast path into one gadget.
+    // Pattern (refcnt Xr, object Xobj):
+    //   ldr  Xr, [Xobj]           ; r = obj->ob_refcnt  (imm offset 0)
+    //   tbnz Wr, #31, skip        ; immortal/negative → skip
+    //   sub  Xr, Xr, #1           ; r--
+    //   str  Xr, [Xobj]           ; write back
+    //   cbnz Xr, skip             ; still referenced → skip
+    // On match, emit one gadget_decref and consume all five instructions. This is
+    // the single hottest inlined pattern in _PyEval_EvalFrameDefault.
+    if ((insn & 0xffc00000) == 0xf9400000u &&         // LDR Xr, [Xobj, #imm]
+        ((insn >> 10) & 0xfff) == 0) {                // imm offset == 0
+        uint32_t r   = insn & 0x1f;
+        uint32_t obj = (insn >> 5) & 0x1f;
+        addr_t p2 = state->ip, p3, p4, p5;
+        uint32_t i2, i3, i4, i5;
+        p3 = p2;
+        if (arm64_read_insn(&p3, tlb, &i2)) { p4 = p3;
+        if (arm64_read_insn(&p4, tlb, &i3)) { p5 = p4;
+        if (arm64_read_insn(&p5, tlb, &i4)) { addr_t p6 = p5;
+        if (arm64_read_insn(&p6, tlb, &i5)) {
+            int tbnz_ok = (i2 & 0xfff8001f) == (0x37f80000u | r);   // tbnz Wr,#31,*
+            int sub_ok  = i3 == (0xd1000400u | (r << 5) | r);       // sub Xr,Xr,#1
+            int str_ok  = (i4 & 0xffc003ff) == (0xf9000000u | (obj << 5) | r) &&
+                          ((i4 >> 10) & 0xfff) == 0;                // str Xr,[Xobj]
+            int cbnz_ok = (i5 & 0xff00001f) == (0xb5000000u | r);   // cbnz Xr,*
+            if (tbnz_ok && sub_ok && str_ok && cbnz_ok) {
+                int64_t tbnz_off = arm64_sign_extend((int64_t)(((i2 >> 5) & 0x3fff)) << 2, 16);
+                addr_t skip = state->ip + tbnz_off;   // tbnz PC = state->ip (post-LDR)
+                addr_t dealloc = p5;                  // insn after cbnz (fallthrough)
+                extern void gadget_decref(void);
+                gen(state, (unsigned long) gadget_decref);
+                gen(state, obj);
+                gen(state, (unsigned long)(skip | (1ULL << 63)));
+                gen(state, (unsigned long)(dealloc | (1ULL << 63)));
+                state->ip = p6;                       // consumed ldr+tbnz+sub+str+cbnz
+                return 1;
+            }
+        }}}}
+    }
+#endif
+
+#ifndef DISABLE_INCREF_FUSION
+    // Peephole: fuse CPython's inlined Py_INCREF fast path into one gadget.
+    // Pattern (32-bit refcnt Wr, object Xobj):
+    //   ldr  Wr, [Xobj]           ; r = obj->ob_refcnt (low 32 bits, imm 0)
+    //   adds Wr, Wr, #1           ; r++, set flags
+    //   b.eq skip                 ; overflow (immortal marker) → don't write back
+    //   str  Wr, [Xobj]           ; write back
+    // The b.eq target is the instruction right after the str, so BOTH paths fall
+    // through to the next opcode — no branch out of the block. This is the LOAD_FAST
+    // / dup-ref hot path, dual of DECREF but with no dealloc branch (always fast).
+    if ((insn & 0xffc00000) == 0xb9400000u &&         // LDR Wr, [Xobj, #imm]
+        ((insn >> 10) & 0xfff) == 0) {                // imm offset == 0
+        uint32_t r   = insn & 0x1f;
+        uint32_t obj = (insn >> 5) & 0x1f;
+        addr_t q2 = state->ip, q3, q4;
+        uint32_t j2, j3, j4;
+        q3 = q2;
+        if (arm64_read_insn(&q3, tlb, &j2)) { q4 = q3;
+        if (arm64_read_insn(&q4, tlb, &j3)) { addr_t q5 = q4;
+        if (arm64_read_insn(&q5, tlb, &j4)) {
+            int adds_ok = j2 == (0x31000400u | (r << 5) | r);       // adds Wr,Wr,#1
+            int beq_ok  = (j3 & 0xff00001f) == 0x54000000u;         // b.eq skip
+            int str_ok  = (j4 & 0xffc003ff) == (0xb9000000u | (obj << 5) | r) &&
+                          ((j4 >> 10) & 0xfff) == 0;                // str Wr,[Xobj]
+            // The b.eq must target the instruction just after the str (fall-through
+            // for both paths). b.eq imm19 is at q3's PC = state->ip+4.
+            int64_t beq_off = arm64_sign_extend((int64_t)(((j3 >> 5) & 0x7ffff)) << 2, 21);
+            addr_t beq_target = (state->ip + 4) + beq_off;
+            addr_t after_str = q5;   // instruction after the str (fall-through)
+            if (adds_ok && beq_ok && str_ok && beq_target == after_str) {
+                extern void gadget_incref(void);
+                gen(state, (unsigned long) gadget_incref);
+                gen(state, obj);
+                state->ip = q5;      // consumed ldr+adds+b.eq+str
+                return 1;
+            }
+        }}}
+    }
+#endif
 
     // Handle a small subset of SVE/SVE2 instructions (modeled as 128-bit vectors)
     // SVE EOR Zd.D, Zn.D, Zm.D
@@ -1931,15 +2038,33 @@ static int gen_branch(struct gen_state *state, uint32_t insn) {
             return 1;
         }
 
-        // Cache maintenance instructions (DC, IC) — NOP in emulation
+        // IC IVAU (Invalidate icache by VA to PoU): d50b752x
+        // This is the architectural signal that the guest modified code at
+        // the given address (self-modifying code: JIT repatching, inline
+        // cache updates, lazy stub linking). It must NOT be a NOP: iSH only
+        // invalidates translated blocks on a write-TLB-miss, so a store
+        // through an already-writable TLB entry to a page with compiled
+        // blocks leaves them stale. JSC/bun repatches JIT code in place and
+        // then issues DC CVAU + IC IVAU per cache line; treating IC IVAU as
+        // a NOP left the pre-patch translation running (observed: FTL lazy
+        // slow path compiled twice -> RELEASE_ASSERT(!m_stub) abort, inline
+        // caches returning stale property values).
+        if ((insn & 0xffffffe0) == 0xd50b7520) {  // IC IVAU
+            uint32_t rt = insn & 0x1f;
+            gen(state, (unsigned long) gadget_ic_ivau);
+            gen(state, rt);
+            return 1;
+        }
+
+        // Data-cache maintenance (DC) — NOP in emulation (host memory is
+        // coherent; only the *instruction* side needs retranslation, which
+        // IC IVAU above handles).
         // DC CIVAC (Clean and Invalidate by VA to PoC): d50b7e2x
         // DC CVAU  (Clean by VA to PoU):                d50b7b2x
         // DC CVAC  (Clean by VA to PoC):                d50b7a2x
-        // IC IVAU  (Invalidate by VA to PoU):           d50b752x
         if ((insn & 0xffffffe0) == 0xd50b7e20 ||  // DC CIVAC
             (insn & 0xffffffe0) == 0xd50b7b20 ||  // DC CVAU
-            (insn & 0xffffffe0) == 0xd50b7a20 ||  // DC CVAC
-            (insn & 0xffffffe0) == 0xd50b7520) {  // IC IVAU
+            (insn & 0xffffffe0) == 0xd50b7a20) {  // DC CVAC
             return 1;  // NOP — no cache to maintain
         }
 
@@ -2128,13 +2253,70 @@ static int gen_ldst(struct gen_state *state, uint32_t insn) {
         return 1;
     }
 
-    // Atomic compare-and-swap (CAS/CASA/CASL/CASAL)
-    // Encoding: size:001000:1:A:1:Rs:R:11111:Rn:Rt
-    // A=acquire (bit23), R=release (bit15)
-    if ((insn & 0x3f200c00) == 0x08200c00) {
+    // Atomic compare-and-swap PAIR — 64-bit variant (CASP{A}{L}, sz=1): a TRUE
+    // 128-bit atomic (compares {Rs,Rs+1} vs 16 bytes of mem, writes {Rt,Rt+1}).
+    // Encoding: 0 sz 001000 0 A 1 Rs o0 11111 Rn Rt  (bit31=0, bit23=0), sz=bit30.
+    // Must be matched BEFORE plain CAS below. Handling it as a 64-bit CAS tears
+    // the pair — exactly the libpas pas_versioned_field {value,version}
+    // corruption that hangs Bun/JSC. sz MUST be in the match (0x40000000):
+    // the 32-bit CASP variant (sz=0) is only an 8-byte atomic over a pair of
+    // 32-bit registers and would be mis-emulated as a 16-byte atomic here.
+    if ((insn & 0xffa07c00) == 0x48207c00) {
+        uint32_t A = (insn >> 22) & 1;    // acquire (L, bit22)
+        uint32_t R = (insn >> 15) & 1;    // release (o0, bit15)
+        uint32_t rs = (insn >> 16) & 0x1f;  // expected pair (Rs, Rs+1)
+        uint32_t rn = (insn >> 5) & 0x1f;
+        uint32_t rt = insn & 0x1f;          // desired pair (Rt, Rt+1)
+
+        // Generate address from Rn
+        gen(state, (unsigned long) gadget_calc_addr_imm);
+        gen(state, rn | (0ULL << 8));  // offset = 0
+
+        if (R) gen(state, (unsigned long) gadget_dmb);  // release barrier before
+        gen(state, (unsigned long) gadget_atomic_casp);
+        gen(state, rs | ((uint64_t)rt << 8));
+        if (A) gen(state, (unsigned long) gadget_dmb);  // acquire barrier after
+        return 1;
+    }
+
+    // Atomic compare-and-swap PAIR — 32-bit variant (CASP{A}{L}, sz=0): an
+    // 8-byte atomic over the {Ws,W(s+1)} / {Wt,W(t+1)} register pairs, where
+    // Ws is the low word and W(s+1) the high word of a 64-bit quantity. We
+    // emulate it as a single 64-bit CAS: pack expected {Ws,W(s+1)} and desired
+    // {Wt,W(t+1)} into 64-bit values. Same encoding as above but bit30=0.
+    if ((insn & 0xffa07c00) == 0x08207c00) {
+        uint32_t A = (insn >> 22) & 1;
+        uint32_t R = (insn >> 15) & 1;
+        uint32_t rs = (insn >> 16) & 0x1f;
+        uint32_t rn = (insn >> 5) & 0x1f;
+        uint32_t rt = insn & 0x1f;
+
+        gen(state, (unsigned long) gadget_calc_addr_imm);
+        gen(state, rn | (0ULL << 8));
+
+        if (R) gen(state, (unsigned long) gadget_dmb);
+        // 32-bit pair CAS packs the register pair into one 64-bit word; the
+        // dedicated gadget assembles {Ws:W(s+1)} / {Wt:W(t+1)} and does an
+        // 8-byte atomic compare-and-swap.
+        gen(state, (unsigned long) gadget_atomic_casp32);
+        gen(state, rs | ((uint64_t)rt << 8));
+        if (A) gen(state, (unsigned long) gadget_dmb);
+        return 1;
+    }
+
+    // Atomic compare-and-swap (CAS/CASA/CASL/CASAL) — single register, any
+    // size (CASB/CASH/CAS w/x). Encoding: size:001000:1:A:1:Rs:R:11111:Rn:Rt
+    // bit23=1 distinguishes CAS from CASP (bit23=0). We must NOT also require
+    // bit31: bit31/bit30 are the size field, so byte CAS (CASB/CASALB, size=00,
+    // bit31=0) and halfword CAS (CASH, size=01) have bit31=0 and would be
+    // missed. The original mask (0x3f200c00) checked bit23 as part of neither —
+    // it matched CASP too (mis-handled as 64-bit CAS). This mask checks bit23=1
+    // (excludes CASP, handled above) but leaves the size field free so all four
+    // CAS widths match. A=acquire (L, bit22), R=release (o0, bit15).
+    if ((insn & 0x3fa07c00) == 0x08a07c00) {
         uint32_t size = (insn >> 30) & 0x3;
-        uint32_t A = (insn >> 23) & 1;    // acquire
-        uint32_t R = (insn >> 15) & 1;    // release
+        uint32_t A = (insn >> 22) & 1;    // acquire (L, bit22)
+        uint32_t R = (insn >> 15) & 1;    // release (o0, bit15)
         uint32_t rs = (insn >> 16) & 0x1f;  // expected value (and result)
         uint32_t rn = (insn >> 5) & 0x1f;
         uint32_t rt = insn & 0x1f;          // new value
@@ -2538,7 +2720,7 @@ static int gen_ldst(struct gen_state *state, uint32_t insn) {
 
             bool is_pre = (mode == 3);
             bool is_post = (mode == 1);
-            bool is_offset = (mode == 2);
+            bool is_offset = (mode == 2 || mode == 0);  // 0 = STNP/LDNP (non-temporal)
 
             if (!is_pre && !is_post && !is_offset) {
                 gen_interrupt(state, INT_UNDEFINED);
@@ -2591,10 +2773,12 @@ static int gen_ldst(struct gen_state *state, uint32_t insn) {
         // For signed offset mode (010), just calculate address
         // For post-indexed (001), use base first, then update
         // For pre-indexed (011), calculate address first, then use and update
+        // For non-temporal mode (000, STNP/LDNP), use signed-offset addressing
+        // — the non-temporal cache hint is advisory and safely ignored.
 
         bool is_pre = (mode == 3);
         bool is_post = (mode == 1);
-        bool is_offset = (mode == 2);
+        bool is_offset = (mode == 2 || mode == 0);  // 0 = STNP/LDNP (non-temporal)
 
         if (!is_pre && !is_post && !is_offset) {
             // Unsupported mode
@@ -2973,24 +3157,19 @@ static int gen_ldst(struct gen_state *state, uint32_t insn) {
                 gen(state, rt | ((uint64_t)rt2 << 8) | ((uint64_t)size << 16));
                 if (o0) gen(state, (unsigned long) gadget_dmb);  // LDAXP: acquire
             } else {
-                if (o0) gen(state, (unsigned long) gadget_dmb);  // STLXP: release
-                // STXP/STLXP - Store pair
-                void (*stp_gadget)(void) = NULL;
-                switch (size) {
-                case 2: stp_gadget = gadget_stp32; break;
-                case 3: stp_gadget = gadget_stp64; break;
-                default:
+                // STXP/STLXP — must be a TRUE atomic pair CAS against the
+                // values loaded by LDXP. Emulating it as a plain store pair
+                // that always reports success tears lock-free algorithms
+                // (128-bit __atomic_compare_exchange fallbacks) under threads.
+                if (size != 2 && size != 3) {
                     gen_interrupt(state, INT_UNDEFINED);
                     return 0;
                 }
-                gen(state, (unsigned long) stp_gadget);
-                gen(state, rt | ((uint64_t)rt2 << 8));
-
-                // Set Rs = 0 to indicate success
-                if (rs != 31) {
-                    gen(state, (unsigned long) gadget_movz);
-                    gen(state, rs | (0 << 8) | (0ULL << 16) | (0ULL << 32));
-                }
+                if (o0) gen(state, (unsigned long) gadget_dmb);  // STLXP: release
+                extern void gadget_stxp_c(void);
+                gen(state, (unsigned long) gadget_stxp_c);
+                gen(state, rt | ((uint64_t)rt2 << 8) | ((uint64_t)rs << 16) |
+                        ((uint64_t)size << 24));
             }
             return 1;
         }
@@ -5428,6 +5607,19 @@ skip_three_different:
 
         gen(state, (unsigned long) gadget);
         gen(state, rd | (rn << 8));
+        return 1;
+    }
+
+    // REV16 (vector) - AdvSIMD two-register misc, reverse bytes in halfwords
+    // 0 Q 0 01110 00 10000 00001 10 Rn Rd  (U=0, size=00, opcode=00001)
+    // Encoding: 0x0e201800 (.8B) / 0x0e601800 would be size!=0 (undefined for REV16)
+    // Mask checks Q ignored, fixed bits + size==00 + opcode==00001.
+    if ((insn & 0xbffffc00) == 0x0e201800) {
+        uint32_t Q = (insn >> 30) & 1;
+        uint32_t rn = (insn >> 5) & 0x1f;
+        uint32_t rd = insn & 0x1f;
+        gen(state, (unsigned long) gadget_rev16_vec);
+        gen(state, rd | (rn << 8) | (Q << 24));
         return 1;
     }
 

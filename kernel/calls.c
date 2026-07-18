@@ -79,6 +79,17 @@ void handle_interrupt(int interrupt) {
 #elif defined(GUEST_ARM64)
         // ARM64: syscall number in x8, args in x0-x5, return in x0
         unsigned syscall_num = cpu->regs[8];
+        // Snapshot for SA_RESTART: x0 (first arg) is about to be clobbered by
+        // the return value; save it and the number so an interrupted syscall
+        // can be re-executed if a SA_RESTART signal is delivered.
+        current->syscall_restart_num = syscall_num;
+        current->syscall_restart_arg0 = cpu->regs[0];
+        // The svc gadget already advanced cpu.pc to the instruction after the
+        // svc. Record it so the SA_RESTART rewind can verify PC is still exactly
+        // here (i.e. we really are delivering a signal for THIS interrupted
+        // syscall) before doing pc -= 4.
+        current->syscall_restart_pc = cpu->pc;
+        current->syscall_restartable = false;
 
         // === FAST PATH: Hot syscalls ===
         int fast_result = -1;  // -1 means fast path not taken
@@ -123,10 +134,49 @@ void handle_interrupt(int interrupt) {
                     printk("%d(%s) stub syscall %d\n", current->pid, current->comm, syscall_num);
                 }
                 STRACE("%d call %-3d ", current->pid, syscall_num);
+                // env-gated full syscall trace for golden-diff vs native strace.
+                // ISH_SYSTRACE=1 logs every slow-path syscall with timestamp,
+                // pid, number, the 6 args, and the return value.
+                static int systrace = -1;
+                if (systrace == -1) { const char *e = getenv("ISH_SYSTRACE"); systrace = (e && e[0]=='1') ? 1 : 0; }
+                uint64_t _a0=cpu->regs[0],_a1=cpu->regs[1],_a2=cpu->regs[2],
+                         _a3=cpu->regs[3],_a4=cpu->regs[4],_a5=cpu->regs[5];
+                struct timespec _t0; if(systrace) clock_gettime(CLOCK_MONOTONIC, &_t0);
                 int64_t result = syscall_table[syscall_num](
                     cpu->regs[0], cpu->regs[1], cpu->regs[2],
                     cpu->regs[3], cpu->regs[4], cpu->regs[5]);
                 STRACE(" = 0x%llx\n", (unsigned long long)result);
+                // Single atomic fprintf so multi-thread output does not
+                // interleave the args line with another thread's return value.
+                if (systrace)
+                    fprintf(stderr, "[sc] %ld.%06ld pid=%d n=%d(%llx,%llx,%llx,%llx,%llx,%llx) = 0x%llx\n",
+                            (long)_t0.tv_sec, _t0.tv_nsec/1000, current->pid, syscall_num,
+                            (unsigned long long)_a0,(unsigned long long)_a1,(unsigned long long)_a2,
+                            (unsigned long long)_a3,(unsigned long long)_a4,(unsigned long long)_a5,
+                            (unsigned long long)result);
+                // SA_RESTART: mark this syscall restartable if it was
+                // interrupted (EINTR). receive_signals will rewind PC if the
+                // delivered signal's handler has SA_RESTART. Restricted to
+                // syscalls that re-execute correctly by simply re-running with
+                // the same args (futex, poll/epoll, read/write, recv/send,
+                // accept, connect, wait). Timer syscalls (nanosleep,
+                // clock_nanosleep, ppoll/pselect with timeout) must NOT use
+                // naive PC-rewind restart: it would restart the FULL duration
+                // rather than the remaining time, so a `timeout N` wrapper's
+                // sleep would never end. Those keep returning EINTR (userspace
+                // handles their own restart with an adjusted timeout).
+                if ((int32_t)(uint32_t)result == -EINTR) {
+                    switch (syscall_num) {
+                        case 98:  // futex
+                        case 22:  // epoll_pwait
+                        case 63:  // read
+                        case 64:  // write
+                            current->syscall_restartable = true;
+                            break;
+                        default:
+                            current->syscall_restartable = false;
+                    }
+                }
                 // sigreturn/rt_sigreturn restore the full CPU state from the
                 // signal frame. Do NOT touch regs[0] — it was already restored
                 // by restore_sigcontext. Any post-processing could corrupt the
@@ -152,6 +202,37 @@ void handle_interrupt(int interrupt) {
                     }
                 }
             }
+        }
+        // [T-ish-group-null-post-syscall-crash] The syscall we just ran may have
+        // left this thread orphaned: a blocking syscall (futex/poll/wait) can
+        // return right as another thread's do_exit_group() safety valve
+        // force-releases us — it sets our `exiting` flag — and, once the group
+        // leader is reaped, task_destroy() does memset(task, 0, ...) which
+        // zeroes our (thread-local) `current` struct, so both `current->group`
+        // and `current->exiting` read back as 0/NULL. The post-syscall
+        // bookkeeping below dereferences current->group unconditionally; with a
+        // zeroed group that computes &((tgroup*)0)->syscall_count == 0x4fc and
+        // the atomic_fetch_add faults (the reported EXC_BAD_ACCESS at 0x4fc on a
+        // backgrounded guest thread). task_run_current()'s top-of-loop guard
+        // already handles this, but only on the NEXT iteration — we must not
+        // touch group before we get back there.
+        //
+        // Bail the SAME way task_run_current() does for a destroyed/leaked task:
+        // pthread_exit() straight out, letting task_run_current()'s
+        // pthread_cleanup handler (task_run_tlb_cleanup) run — it honors
+        // mm_release_deferred and frees the tlb. Do NOT call do_exit() here:
+        //   * for the zeroed-struct case (group==NULL, exiting==0) do_exit()
+        //     would fall through its `if (current->exiting)` fast-path and then
+        //     dereference current->group->doing_group_exit — the same NULL crash
+        //     one line over;
+        //   * for the force-released case (exiting==1) do_exit() sets
+        //     current=NULL before pthread_exit(), which makes task_run_tlb_cleanup
+        //     skip the deferred mm_release and leak the guest address space.
+        // Reading group_exit_code for a status is pointless anyway — do_exit()
+        // ignores its argument once `exiting` is set — and unsafe, since the
+        // group may already be freed.
+        if (current->exiting || current->group == NULL) {
+            pthread_exit(NULL);
         }
         // Update deadlock detection state.
         atomic_fetch_add(&current->group->syscall_count, 1);
@@ -749,6 +830,124 @@ void handle_interrupt(int interrupt) {
                 printk("  sp+0x3e8=0x%llx jit_crashes=%d\n",
                     (unsigned long long)(cpu->sp + 0x3e8),
                     jit_crash_count);
+                // Guest backtrace: walk the x29 frame chain (works for both
+                // AAPCS64 and JSC CallFrame layouts — caller frame at [fp],
+                // return PC at [fp+8]). Print the first frames and a return-PC
+                // histogram so an unbounded recursion shows its cycle.
+                if (getenv("ISH_GPF_BT")) {
+                    // Watchpoint ring: who wrote the watched window (ISH_WATCH_PAGE)
+                    { extern void dump_watch_hits(uint64_t lo, uint64_t hi);
+                      extern volatile uint64_t g_watch_lo, g_watch_hi;
+                      dump_watch_hits(g_watch_lo, g_watch_hi); }
+                    { extern uint64_t g_watch_field_regs[32];
+                      extern volatile int g_watch_field_hit_count;
+                      if (g_watch_field_hit_count) {
+                          printk("  [watch-field] store hit count=%d, regs at first hit:\n", g_watch_field_hit_count);
+                          for (int i = 0; i < 31; i += 4)
+                              printk("    x%d=0x%llx x%d=0x%llx x%d=0x%llx x%d=0x%llx\n",
+                                     i, (unsigned long long)g_watch_field_regs[i],
+                                     i+1, i+1 < 31 ? (unsigned long long)g_watch_field_regs[i+1] : 0,
+                                     i+2, i+2 < 31 ? (unsigned long long)g_watch_field_regs[i+2] : 0,
+                                     i+3, i+3 < 31 ? (unsigned long long)g_watch_field_regs[i+3] : 0);
+                          printk("    pc=0x%llx\n", (unsigned long long)g_watch_field_regs[31]);
+                          { extern uint64_t g_watch_field_last_regs[32];
+                            printk("  [watch-field] LAST hit x8=0x%llx x9=0x%llx x0=0x%llx x19=0x%llx\n",
+                                   (unsigned long long)g_watch_field_last_regs[8],
+                                   (unsigned long long)g_watch_field_last_regs[9],
+                                   (unsigned long long)g_watch_field_last_regs[0],
+                                   (unsigned long long)g_watch_field_last_regs[19]); }
+                          // Fresh re-reads of candidate source pointers +0x14
+                          for (int r = 0; r < 31; r++) {
+                              uint64_t p = g_watch_field_regs[r];
+                              if (p >= 0x100000 && p < 0x100000000000ULL) {
+                                  uint32_t v = 0;
+                                  if (!user_get(p + 0x14, v))
+                                      printk("    [x%d+0x14] = 0x%x\n", r, v);
+                              }
+                          }
+                          // Block 0x41eee2c reads numVars from [x19+0x18] and
+                          // numCalleeLocals from [x19+0x1c]; dump x19 source.
+                          { uint64_t base = g_watch_field_regs[19];
+                            for (int off = 0; off < 0x40; off += 4) {
+                                uint32_t v = 0;
+                                if (!user_get(base + off, v))
+                                    printk("    [x19 0x%llx+0x%x] = 0x%x\n",
+                                           (unsigned long long)base, off, v);
+                            }
+                            struct pt_entry *pe = mem_pt(current->mem, PAGE(base));
+                            if (pe)
+                                printk("    x19 page flags=0x%x data=%p off=0x%zx refcnt=%u\n",
+                                       pe->flags, pe->data ? pe->data->data : NULL, pe->offset,
+                                       pe->data ? pe->data->refcount : 0);
+                          }
+                      } }
+                    // Fresh re-read of the memory x1 points at (LLInt CodeBlock
+                    // candidate): distinguishes "load saw stale TLB data" (fresh
+                    // read differs from what the gadget loaded) from "memory
+                    // really holds this value".
+                    for (int off = 0; off <= 0x18; off += 4) {
+                        uint32_t v = 0;
+                        if (!user_get(cpu->regs[1] + off, v))
+                            printk("  [x1+0x%x] = 0x%x\n", off, v);
+                    }
+                    // Follow CodeBlock::m_unlinkedCode ([x1+0x38]) and dump the
+                    // UnlinkedCodeBlock the crashing CodeBlock was built from.
+                    {
+                        uint64_t unlinked = 0;
+                        if (!user_get(cpu->regs[1] + 0x38, unlinked) && unlinked) {
+                            printk("  unlinked=[x1+0x38]=0x%llx\n", (unsigned long long)unlinked);
+                            { extern void dump_watch_hits_for(uint64_t addr);
+                              dump_watch_hits_for(unlinked + 0x10); }
+                            for (int off = 0; off <= 0x40; off += 8) {
+                                uint64_t v = 0;
+                                if (!user_get(unlinked + off, v))
+                                    printk("    [ulk+0x%x] = 0x%llx\n", off, (unsigned long long)v);
+                            }
+                            uint32_t ctr = 0;
+                            if (!user_get(unlinked + 0xa8, ctr))
+                                printk("    [ulk+0xa8](counter) = 0x%x\n", ctr);
+                            struct pt_entry *pe = mem_pt(current->mem, PAGE(unlinked));
+                            if (pe != NULL)
+                                printk("    ulk page flags=0x%x data=%p offset=0x%zx refcnt=%u\n",
+                                       pe->flags, pe->data ? pe->data->data : NULL,
+                                       pe->offset, pe->data ? pe->data->refcount : 0);
+                        }
+                    }
+                    uint64_t fp = cpu->regs[29];
+                    uint64_t pcs[64]; int n = 0;
+                    struct { uint64_t pc; int count; } hist[32]; int nh = 0;
+                    for (int i = 0; i < 100000 && fp; i++) {
+                        uint64_t next_fp = 0, ret_pc = 0;
+                        if (user_get(fp, next_fp) || user_get(fp + 8, ret_pc)) break;
+                        if (n < 64) pcs[n++] = ret_pc;
+                        for (int h = 0; h < nh; h++)
+                            if (hist[h].pc == ret_pc) { hist[h].count++; ret_pc = 0; break; }
+                        if (ret_pc && nh < 32) { hist[nh].pc = ret_pc; hist[nh].count = 1; nh++; }
+                        if (next_fp <= fp) break;
+                        fp = next_fp;
+                    }
+                    printk("  [bt] first %d return PCs:\n", n);
+                    for (int i = 0; i < n; i++) printk("    #%d 0x%llx\n", i, (unsigned long long)pcs[i]);
+                    printk("  [bt] return PC histogram (unique among walked frames):\n");
+                    for (int h = 0; h < nh; h++)
+                        printk("    0x%llx x%d\n", (unsigned long long)hist[h].pc, hist[h].count);
+                    // Dump code preceding return PCs that live in JIT-generated
+                    // memory (0xc0000000 range) — the caller thunk's tail.
+                    for (int i = 0; i < n && i < 12; i++) {
+                        if (pcs[i] < 0xc0000000ULL || pcs[i] >= 0xe0000000ULL)
+                            continue;
+                        printk("  [bt] JIT code before ret pc 0x%llx:\n", (unsigned long long)pcs[i]);
+                        for (int k = -24; k <= 2; k++) {
+                            uint32_t insn = 0; bool ok = true;
+                            for (int j = 0; j < 4; j++) {
+                                uint8_t b;
+                                if (user_get(pcs[i] + k*4 + j, b)) { ok = false; break; }
+                                insn |= (uint32_t)b << (j*8);
+                            }
+                            if (ok) printk("    0x%llx: 0x%08x\n", (unsigned long long)(pcs[i] + k*4), insn);
+                        }
+                    }
+                }
                 // Dump block instructions when fault addr > 4GB (overflow address)
                 if (cpu->segfault_addr > 0x100000000ULL) {
                     printk("  block insns from PC=0x%llx:\n", (unsigned long long)cpu->pc);

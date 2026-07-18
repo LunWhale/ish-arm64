@@ -1311,9 +1311,13 @@ and_imm_store_result:
 3:  and x17, x17, #0xffffffff
 4:
     cmp x10, #31
-    b.eq 5f
+    b.eq 6f
     str x17, [x14, x10, lsl #3]
-5:  gret
+    gret
+6:  // rd=31 for ORR (immediate): writes SP, not XZR (only ANDS uses XZR).
+    and x17, x17, #0xffffffffffff   // Mask to 48-bit address space
+    str x17, [_cpu, #CPU_sp]
+    gret
 
 .gadget eor_imm
     ldr x8, [_pc]
@@ -1340,9 +1344,13 @@ and_imm_store_result:
 3:  and x17, x17, #0xffffffff
 4:
     cmp x10, #31
-    b.eq 5f
+    b.eq 6f
     str x17, [x14, x10, lsl #3]
-5:  gret
+    gret
+6:  // rd=31 for EOR (immediate): writes SP, not XZR (only ANDS uses XZR).
+    and x17, x17, #0xffffffffffff   // Mask to 48-bit address space
+    str x17, [_cpu, #CPU_sp]
+    gret
 
 /*
  * EXTR - Extract register (concatenate and shift)
@@ -5769,6 +5777,36 @@ msub_store:
     gret
 
 .Lrev32_store_low:
+    str d0, [x14]
+    str xzr, [x14, #8]
+    gret
+
+/*
+ * REV16 - Reverse bytes within each 16-bit halfword (vector)
+ * Code stream: [gadget addr][rd | rn<<8 | Q<<24]  (size always 0 = bytes)
+ * Q: 0 = .8B (64-bit vector), 1 = .16B (128-bit vector)
+ */
+.gadget rev16_vec
+    ldr x8, [_pc]
+    add _pc, _pc, #8
+
+    and x9, x8, #0x1f       // rd
+    ubfx x10, x8, #8, #5    // rn
+    ubfx x12, x8, #24, #1   // Q
+
+    add x13, _cpu, #CPU_fp
+    lsl x14, x9, #4
+    add x14, x13, x14       // &Vd
+    lsl x15, x10, #4
+    add x15, x13, x15       // &Vn
+
+    ldr q0, [x15]
+    cbz x12, .Lrev16_low
+    rev16 v0.16b, v0.16b
+    str q0, [x14]
+    gret
+.Lrev16_low:
+    rev16 v0.8b, v0.8b
     str d0, [x14]
     str xzr, [x14, #8]
     gret
