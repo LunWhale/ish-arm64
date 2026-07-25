@@ -16,6 +16,22 @@
 
 #define LOCK_DEBUG 0
 
+// Slow-lock tracing: when enabled AND the ISH_LOCK_TRACE environment variable
+// is set, lock() spins with trylock and reports any wait longer than 3s. Useful
+// for diagnosing lock-order inversions and hangs.
+//
+// Compiled out by default. As a plain runtime `if` it could not be optimised
+// away (the flag is a mutable global), so every lock() carried the branch and
+// the inlined tracing body — a needless icache cost across the very many lock
+// sites in the emulator. It also dragged current_pid() and the trace flag into
+// anything that merely takes a lock, which broke linking for standalone tools
+// such as tools/fakefsify that have no kernel task state to report.
+//
+// Enable for a debugging build with -DLOCK_SLOW_TRACE=1.
+#ifndef LOCK_SLOW_TRACE
+#define LOCK_SLOW_TRACE 0
+#endif
+
 typedef struct {
     pthread_mutex_t m;
     pthread_t owner;
@@ -43,8 +59,11 @@ static inline void lock_init(lock_t *lock) {
 #else
 #define LOCK_INITIALIZER {PTHREAD_MUTEX_INITIALIZER, 0}
 #endif
+#if LOCK_SLOW_TRACE
 extern int g_lock_slow_trace; // set from ISH_LOCK_TRACE at startup
+#endif
 static inline void __lock(lock_t *lock, __attribute__((unused)) const char *file, __attribute__((unused)) int line) {
+#if LOCK_SLOW_TRACE
     if (g_lock_slow_trace) {
         struct timespec _s; clock_gettime(CLOCK_MONOTONIC, &_s);
         int spun = 0;
@@ -62,9 +81,12 @@ static inline void __lock(lock_t *lock, __attribute__((unused)) const char *file
         lock->owner = pthread_self();
         goto done;
     }
+#endif
     pthread_mutex_lock(&lock->m);
     lock->owner = pthread_self();
+#if LOCK_SLOW_TRACE
 done:;
+#endif
 #if LOCK_DEBUG
     assert(lock->debug.initialized);
     assert(!lock->debug.file && "Attempting to recursively lock");
