@@ -53,6 +53,9 @@ int native_offload_exec(const char *native_path, const char *guest_file,
 bool native_offload_forward_signal(struct task *task, int sig) {
     (void)task; (void)sig; return false;
 }
+int native_offload_set_abort_handler(const char *guest_name, native_abort_func abort_fn) {
+    (void)guest_name; (void)abort_fn; return -1;
+}
 #else
 
 // --- Dynamic registry ---
@@ -61,6 +64,9 @@ struct offload_entry {
     char *guest_name;
     char *native_path;           // NULL if using handler
     native_handler_func handler; // non-NULL for in-process execution
+    // [T-ish-offload-signal-forward] Optional: lets a wedged in-process handler
+    // be asked to stop waiting when the guest task is signalled.
+    native_abort_func abort_fn;
 };
 
 static struct offload_entry offload_entries[NATIVE_OFFLOAD_MAX];
@@ -154,8 +160,26 @@ int native_offload_add_handler(const char *guest_name, native_handler_func handl
     e->guest_name = strdup(guest_name);
     e->native_path = NULL;
     e->handler = handler;
+    e->abort_fn = NULL;
     fprintf(stderr, "native_offload: %s → [builtin]\n", guest_name);
     return 0;
+}
+
+// [T-ish-offload-signal-forward] Attach an abort callback to a registered
+// in-process handler. Separate from add_handler so existing registrations (and
+// the macOS posix_spawn path) need no change: an offload without one keeps the
+// pre-existing "cannot be interrupted" behaviour.
+int native_offload_set_abort_handler(const char *guest_name, native_abort_func abort_fn) {
+    for (int i = 0; i < offload_count; i++) {
+        if (strcmp(offload_entries[i].guest_name, guest_name) != 0)
+            continue;
+        if (offload_entries[i].handler == NULL)
+            return -1;   // posix_spawn offload — signals already go via kill()
+        offload_entries[i].abort_fn = abort_fn;
+        fprintf(stderr, "native_offload: %s abort handler registered\n", guest_name);
+        return 0;
+    }
+    return -1;
 }
 
 // Internal: find entry by guest binary basename
@@ -298,12 +322,42 @@ static int guest_to_host_signal(int guest_sig) {
 }
 
 bool native_offload_forward_signal(struct task *task, int sig) {
-    if (!task->is_native_proxy || task->native_pid <= 0)
+    // Shape 1: posix_spawn proxy — a real host pid exists, signal it directly.
+    if (task->is_native_proxy && task->native_pid > 0) {
+        int host_sig = guest_to_host_signal(sig);
+        if (host_sig > 0)
+            kill(task->native_pid, host_sig);
+        return true;
+    }
+
+    // [T-ish-offload-signal-forward] Shape 2: in-process handler. There is no
+    // host pid to signal — the handler is running on this task's OWN thread,
+    // which is parked inside host code and will never look at the guest signal
+    // queue. Ask the handler to stop instead.
+    //
+    // Only terminating signals do this. A handler is not a general signal
+    // target: forwarding e.g. SIGWINCH or SIGCHLD as "abort" would turn routine
+    // notifications into a killed transcode. SIGKILL/SIGTERM/SIGINT/SIGQUIT/
+    // SIGHUP are the ones whose whole meaning is "stop now"; everything else
+    // falls through to normal guest delivery (harmlessly queued, as today).
+    struct offload_entry *entry = (struct offload_entry *) task->native_offload_entry;
+    if (entry == NULL || entry->abort_fn == NULL)
         return false;
-    int host_sig = guest_to_host_signal(sig);
-    if (host_sig > 0)
-        kill(task->native_pid, host_sig);
-    return true;
+    if (sig != SIGKILL_ && sig != SIGTERM_ && sig != SIGINT_ &&
+        sig != SIGQUIT_ && sig != SIGHUP_)
+        return false;
+
+    // Deliberately NOT consuming the signal (returns false after the callback):
+    // the abort only asks the handler to unblock. The handler then returns
+    // normally and exec_handler calls do_exit() — but do_exit() runs on the
+    // task's own thread, and only the guest signal machinery knows the right
+    // exit status for a killed task. Letting the signal continue to normal
+    // delivery keeps `kill -9` reporting the usual killed-by-signal status
+    // instead of the handler's own return code.
+    bool aborting = entry->abort_fn(sig);
+    printk("native_offload: signal %d → in-process handler %s abort (%s)\n",
+           sig, entry->guest_name, aborting ? "accepted" : "declined");
+    return false;
 }
 
 // --- Post-exec: scan for new files and register in fakefs DB ---
@@ -623,8 +677,18 @@ static int exec_handler(native_handler_func handler, const char *guest_file,
         free(host_cwd);
     }
 
+    // [T-ish-offload-signal-forward] Publish which offload this task is running
+    // so native_offload_forward_signal can find its abort callback while the
+    // handler is in flight. Set immediately before the call and cleared right
+    // after, so a signal can only reach the callback during the window when the
+    // handler is genuinely running. `entry` points into the static registry,
+    // which outlives every task.
+    current->native_offload_entry = offload_find(guest_file);
+
     // Call the handler in-process
     int ret = handler((int)argc, handler_argv, handler_stdin, handler_stdout, handler_stderr);
+
+    current->native_offload_entry = NULL;
 
     // Close write ends so forwarding threads see EOF
     if (stdout_pipe[1] >= 0) close(stdout_pipe[1]);
