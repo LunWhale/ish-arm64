@@ -125,6 +125,15 @@ struct task {
     pid_t native_pid;
     bool is_native_proxy;
 
+    // [T-ish-offload-signal-forward] Set while this task is executing an
+    // IN-PROCESS offload handler (native_offload_add_handler). Distinct from
+    // is_native_proxy, which covers only the posix_spawn shape: a handler runs
+    // on this very thread with no host pid, so a signal can't be forwarded with
+    // kill() — it has to go through the handler's abort callback instead.
+    // Points into the static offload registry, which lives for the process
+    // lifetime, so it never dangles. NULL when not in a handler.
+    void *native_offload_entry;
+
     // current condition/lock, so it can be notified in case of a signal
     cond_t *waiting_cond;
     lock_t *waiting_lock;
