@@ -290,6 +290,18 @@ static ssize_t proc_pid_mem_pwrite(struct proc_entry *entry, struct proc_data *b
 }
 
 
+static int proc_pid_mem_seek(struct proc_entry *UNUSED(entry), qword_t *position,
+        off_t_ off, int whence) {
+    if (whence == LSEEK_SET)
+        *position = (qword_t) off;
+    else if (whence == LSEEK_CUR)
+        *position += (qword_t) off;
+    else
+        return _EINVAL;
+    return 0;
+}
+
+
 static struct proc_dir_entry proc_pid_fd;
 
 static bool proc_pid_fd_readdir(struct proc_entry *entry, unsigned long *index, struct proc_entry *next_entry) {
@@ -400,7 +412,8 @@ struct proc_children proc_pid_children = PROC_CHILDREN({
     {"exe", S_IFLNK, .readlink = proc_pid_exe_readlink},
     {"fd", S_IFDIR, .readdir = proc_pid_fd_readdir},
     {"maps", .show = proc_pid_maps_show},
-    {"mem", .pread = proc_pid_mem_pread, .pwrite = proc_pid_mem_pwrite},
+    {"mem", .pread = proc_pid_mem_pread, .pwrite = proc_pid_mem_pwrite,
+        .seek = proc_pid_mem_seek},
     {"stat", .show = proc_pid_stat_show},
     {"statm", .show = proc_pid_statm_show},
     {"task", S_IFDIR, .readdir = proc_pid_task_readdir},

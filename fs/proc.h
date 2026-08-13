@@ -38,6 +38,9 @@ struct proc_dir_entry {
     // file with custom pwrite functionality
     ssize_t (*pwrite)(struct proc_entry *entry, struct proc_data *data, off_t off);
 
+    // file with custom seek semantics; position contains the raw signed offset bits
+    int (*seek)(struct proc_entry *entry, qword_t *position, off_t_ off, int whence);
+
     // symlink
     int (*readlink)(struct proc_entry *entry, char *buf);
     

@@ -109,6 +109,16 @@ static int proc_refresh_data(struct fd *fd) {
 }
 
 static off_t_ proc_seek(struct fd *fd, off_t_ off, int whence) {
+    struct proc_entry *entry = &fd->proc.entry;
+    if (entry->meta->seek != NULL) {
+        qword_t position = fd->offset;
+        int err = entry->meta->seek(entry, &position, off, whence);
+        if (err < 0)
+            return err;
+        fd->offset = position;
+        return (off_t_) position;
+    }
+
     int err = proc_refresh_data(fd);
     if (err < 0)
         return err;

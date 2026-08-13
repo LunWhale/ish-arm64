@@ -5975,6 +5975,113 @@ make_fp_vec_two_reg_misc frintz_vec, frintz
 make_fp_vec_two_reg_misc frinti_vec, frinti
 
 /*
+ * Run a native FP instruction under the guest FPCR/FPSR, then restore the
+ * host thread's state. The conversion gadgets below can round, quiet NaNs and
+ * raise cumulative exceptions, so using the process FP state is incorrect.
+ */
+.macro fp_guest_enter host_fpcr, host_fpsr, scratch_x, scratch_w
+    mrs \host_fpcr, fpcr
+    mrs \host_fpsr, fpsr
+    ldr \scratch_w, [_cpu, #CPU_fpcr]
+    msr fpcr, \scratch_x
+    ldr \scratch_w, [_cpu, #CPU_fpsr]
+    msr fpsr, \scratch_x
+.endm
+
+.macro fp_guest_leave host_fpcr, host_fpsr, scratch_x, scratch_w
+    mrs \scratch_x, fpsr
+    str \scratch_w, [_cpu, #CPU_fpsr]
+    msr fpcr, \host_fpcr
+    msr fpsr, \host_fpsr
+.endm
+
+/*
+ * FCVTN/FCVTN2 - floating-point narrowing conversion.
+ * Code stream: [gadget addr][rd | rn<<8 | size<<16 | Q<<24]
+ * size: 0 = single->half, 1 = double->single
+ * Q: 0 = FCVTN (write lower half, zero upper), 1 = FCVTN2 (preserve lower)
+ */
+.gadget fcvtn_vec
+    ldr x8, [_pc]
+    add _pc, _pc, #8
+    and x9, x8, #0x1f       // rd
+    ubfx x10, x8, #8, #5    // rn
+    ubfx x11, x8, #16, #1   // size
+    ubfx x17, x8, #24, #1   // Q / upper destination half
+
+    add x13, _cpu, #CPU_fp
+    lsl x14, x9, #4
+    add x14, x13, x14       // &Vd
+    lsl x15, x10, #4
+    add x15, x13, x15       // &Vn
+
+    // Load the source before Vd so rn==rd works for both lower and upper forms.
+    ldr q0, [x15]
+    fp_guest_enter x12, x16, x8, w8
+    cbnz x11, .Lfcvtn_d_to_s
+
+    // Single -> half.
+    cbnz x17, .Lfcvtn2_s_to_h
+    fcvtn v0.4h, v0.4s
+    fp_guest_leave x12, x16, x8, w8
+    str d0, [x14]
+    str xzr, [x14, #8]
+    gret
+.Lfcvtn2_s_to_h:
+    ldr q1, [x14]
+    fcvtn2 v1.8h, v0.4s
+    fp_guest_leave x12, x16, x8, w8
+    str q1, [x14]
+    gret
+
+.Lfcvtn_d_to_s:
+    cbnz x17, .Lfcvtn2_d_to_s
+    fcvtn v0.2s, v0.2d
+    fp_guest_leave x12, x16, x8, w8
+    str d0, [x14]
+    str xzr, [x14, #8]
+    gret
+.Lfcvtn2_d_to_s:
+    ldr q1, [x14]
+    fcvtn2 v1.4s, v0.2d
+    fp_guest_leave x12, x16, x8, w8
+    str q1, [x14]
+    gret
+
+/*
+ * FCVTXN/FCVTXN2 - double-to-single round-to-odd narrowing conversion.
+ * Code stream: [gadget addr][rd | rn<<8 | Q<<24]
+ * Q: 0 = FCVTXN (write lower half, zero upper), 1 = FCVTXN2 (preserve lower)
+ */
+.gadget fcvtxn_vec
+    ldr x8, [_pc]
+    add _pc, _pc, #8
+    and x9, x8, #0x1f       // rd
+    ubfx x10, x8, #8, #5    // rn
+    ubfx x17, x8, #24, #1   // Q / upper destination half
+
+    add x13, _cpu, #CPU_fp
+    lsl x14, x9, #4
+    add x14, x13, x14       // &Vd
+    lsl x15, x10, #4
+    add x15, x13, x15       // &Vn
+
+    ldr q0, [x15]           // source first for rn==rd
+    fp_guest_enter x12, x16, x8, w8
+    cbnz x17, .Lfcvtxn2_d_to_s
+    fcvtxn v0.2s, v0.2d
+    fp_guest_leave x12, x16, x8, w8
+    str d0, [x14]
+    str xzr, [x14, #8]
+    gret
+.Lfcvtxn2_d_to_s:
+    ldr q1, [x14]
+    fcvtxn2 v1.4s, v0.2d
+    fp_guest_leave x12, x16, x8, w8
+    str q1, [x14]
+    gret
+
+/*
  * Vector FP compare-with-zero instructions
  * Code stream: [gadget addr][rd | rn<<8 | sz<<16 | Q<<24]
  */
