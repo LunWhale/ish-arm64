@@ -789,6 +789,11 @@ static void *mem_ptr_nofault(struct mem *mem, addr_t addr, int type) {
 void *mem_ptr(struct mem *mem, addr_t addr, int type) {
 #ifndef NDEBUG
     void *old_ptr = mem_ptr_nofault(mem, addr, type); // just for an assert
+    // Set once we drop mem->lock below. While the lock is released the page
+    // table is fair game for other threads, and the CoW path deliberately
+    // installs a freshly mmap'd page, so `old_ptr` stops being a valid
+    // prediction of the final pointer. Only compare when we never let go.
+    bool remapped = false;
 #endif
 
     page_t page = PAGE(addr);
@@ -854,12 +859,16 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
         // block without our thread needing to return and risk the
         // retry SP compounding.
         read_wrunlock(&mem->lock);
-        // write_wrlock here uses a bounded trylock-spin that falls back to a
-        // blocking acquire (see __write_wrlock in util/sync.h). We released our
-        // own read lock just above, and other threads release theirs on each
-        // JIT block boundary, so a reader-free window normally appears within
-        // the spin budget; if it doesn't, the blocking fallback still
-        // guarantees forward progress (waiting at most about one JIT cycle).
+#ifndef NDEBUG
+        // Lock dropped — see `remapped` at the top of the function.
+        remapped = true;
+#endif
+        // write_wrlock here uses a NON-BLOCKING trylock-spin (see
+        // __write_wrlock in util/sync.h; the blocking fallback was removed in
+        // 26c5d9d5 because it deadlocked JSC's GC). We released our own read
+        // lock just above, and other threads release theirs on each JIT block
+        // boundary, so a reader-free window normally appears quickly — but the
+        // spin is unbounded in time, so nothing read before it still holds.
         //
         // Returning NULL → INT_GPF from this path is catastrophic for
         // growsdown: INT_GPF retry re-enters the JIT block from the
@@ -922,9 +931,14 @@ check_reservation: ;
         if (res == NULL)
             return NULL;
         read_wrunlock(&mem->lock);
-        // BLOCKING: avoid NULL → INT_GPF retry (which re-runs the JIT
-        // block's prologue and can compound sub-sp or other side
-        // effects). See growsdown branch above for the full rationale.
+#ifndef NDEBUG
+        // Lock dropped — see `remapped` at the top of the function.
+        remapped = true;
+#endif
+        // Acquire rather than return NULL → INT_GPF retry (which re-runs the
+        // JIT block's prologue and can compound sub-sp or other side effects).
+        // See growsdown branch above for the full rationale, including why the
+        // acquire spins instead of blocking.
         write_wrlock(&mem->lock);
         entry = mem_pt(mem, page);
         if (entry == NULL) {
@@ -981,14 +995,21 @@ have_entry:
                     MAP_PRIVATE | MAP_ANONYMOUS, 0, 0);
 
             read_wrunlock(&mem->lock);
-            // write_wrlock uses a bounded trylock-spin with a blocking
-            // fallback (util/sync.h). We must get the write lock rather than
-            // return NULL → INT_GPF: retry would re-run the entire JIT block
-            // from the start, and a prologue like `sub sp, sp, #N` before the
-            // faulting store would decrement SP again each retry, corrupting
-            // the frame layout. The spin catches the common case where other
-            // readers release their per-block read locks quickly; the fallback
-            // guarantees we still acquire (bounded ~one JIT cycle).
+#ifndef NDEBUG
+            // Lock dropped — see `remapped` at the top of the function.
+            remapped = true;
+#endif
+            // write_wrlock uses a NON-BLOCKING trylock-spin (util/sync.h): it
+            // retries with a backoff that ramps to a steady 100us sleep and
+            // never queues as a blocking waiter, because blocking here is
+            // writer-preferring on Darwin and deadlocks JSC's GC against JIT
+            // reader threads (26c5d9d5). We must get the write lock rather
+            // than return NULL → INT_GPF: retry would re-run the entire JIT
+            // block from the start, and a prologue like `sub sp, sp, #N`
+            // before the faulting store would decrement SP again each retry,
+            // corrupting the frame layout. Note the spin can last for many
+            // milliseconds while readers stay live, which is precisely why
+            // nothing observed before this call may be assumed afterwards.
             write_wrlock(&mem->lock);
             // Re-fetch entry after lock upgrade — another thread may have
             // already resolved this CoW while we were waiting for the lock.
@@ -1014,7 +1035,9 @@ have_entry:
 
     void *ptr = mem_ptr_nofault(mem, addr, type);
 #ifndef NDEBUG
-    assert(old_ptr == NULL || old_ptr == ptr || type == MEM_WRITE_PTRACE);
+    // `remapped` covers the CoW path, which drops mem->lock and installs a new
+    // page on purpose — a changed pointer there is correct behavior, not a bug.
+    assert(remapped || old_ptr == NULL || old_ptr == ptr || type == MEM_WRITE_PTRACE);
 #endif
     return ptr;
 }
