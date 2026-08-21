@@ -793,6 +793,13 @@ void *mem_ptr(struct mem *mem, addr_t addr, int type) {
     // table is fair game for other threads, and the CoW path deliberately
     // installs a freshly mmap'd page, so `old_ptr` stops being a valid
     // prediction of the final pointer. Only compare when we never let go.
+    //
+    // Set at each of the three read_wrunlock() sites (growsdown, reservation,
+    // CoW). The later write_wrunlock()/read_wrlock() downgrades are lock-drop
+    // windows too, but every one of them is downstream of one of those three,
+    // so `remapped` is already true by the time they run. If you ever add a
+    // path that reaches a downgrade without passing a read_wrunlock() above,
+    // set the flag there as well or this assert can abort again.
     bool remapped = false;
 #endif
 
@@ -1035,8 +1042,9 @@ have_entry:
 
     void *ptr = mem_ptr_nofault(mem, addr, type);
 #ifndef NDEBUG
-    // `remapped` covers the CoW path, which drops mem->lock and installs a new
-    // page on purpose — a changed pointer there is correct behavior, not a bug.
+    // `remapped` covers all three paths that drop mem->lock (growsdown,
+    // reservation, CoW); each installs new page-table state on purpose, so a
+    // changed pointer there is correct behavior, not a bug.
     assert(remapped || old_ptr == NULL || old_ptr == ptr || type == MEM_WRITE_PTRACE);
 #endif
     return ptr;
