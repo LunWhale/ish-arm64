@@ -125,11 +125,12 @@ static off_t_ proc_seek(struct fd *fd, off_t_ off, int whence) {
     if (fd->proc.entry.meta->pread != NULL) {
         if (whence == LSEEK_END)
             return _EINVAL;
-        // generic_seek only rejects negatives on the CUR/END paths; LSEEK_SET
-        // stores the offset verbatim, and fd->offset is unsigned, so a
-        // negative would silently wrap to a huge value and then be truncated
-        // into a guest address by the pread handler. Reject it up front, and
-        // leave fd->offset untouched — a failed seek must not move the file.
+        // generic_seek checks for a negative result on the CUR and END paths
+        // but not on LSEEK_SET, which stores the offset verbatim. Since
+        // fd->offset is unsigned, a negative would wrap to a huge value and
+        // then be truncated into a guest address by the pread handler, so
+        // reject it up front. Returning before generic_seek also leaves
+        // fd->offset untouched — a failed seek must not move the file.
         // (Linux returns EINVAL for a negative resulting position too.)
         if (whence == LSEEK_SET && off < 0)
             return _EINVAL;
