@@ -29,11 +29,36 @@ extern __thread volatile int jit_crash_count;
 extern void jit_crash_trampoline(void);
 #endif
 
-// cpu-offsets.h values needed by crash handler
-#define CRASH_CPU_pc 272
-#define CRASH_CPU_segfault_addr 832
-#define CRASH_CPU_segfault_was_write 840
-#define CRASH_LOCAL_jit_exit_sp 920
+// Field offsets needed by the JIT crash handler.
+//
+// These were previously hand-copied integer literals, and three of the four had
+// drifted from the structs they describe (segfault_addr 832 vs 840,
+// segfault_was_write 840 vs 848, jit_exit_sp 920 vs 936). The jit_exit_sp error
+// is the damaging one: offset 920 lands on `fiber_frame.value[3]`, the crosspage
+// scratch buffer, so recovery restored SP from leftover guest data (or 0) and
+// `fiber_exit`'s first instruction — `ldr lr, [sp, #0x60]` — faulted. That is
+// the `fiber_exit + 0` <- `handle_miss_… + 4` crash signature, including the
+// literal `KERN_INVALID_ADDRESS at 0x60` seen when the buffer happened to be 0.
+//
+// Derive them from the actual types instead. main.c already includes both
+// headers, so offsetof cannot drift; a struct-layout change now updates these
+// automatically rather than silently corrupting recovery.
+#include <stddef.h>
+#include "asbestos/frame.h"
+#define CRASH_CPU_pc                offsetof(struct cpu_state, pc)
+#define CRASH_CPU_segfault_addr     offsetof(struct cpu_state, segfault_addr)
+#define CRASH_CPU_segfault_was_write offsetof(struct cpu_state, segfault_was_write)
+#define CRASH_LOCAL_jit_exit_sp     offsetof(struct fiber_frame, jit_exit_sp)
+
+// The gadgets reach the same fields through cpu-offsets.h, which meson
+// generates from these structs. Tie the two views together so a future layout
+// change can never leave the C recovery path and the assembly disagreeing --
+// silent disagreement is exactly how the literals above went stale.
+#include "cpu-offsets.h"
+static_assert(CRASH_CPU_pc                 == CPU_pc,                 "cpu-offsets drift: pc");
+static_assert(CRASH_CPU_segfault_addr      == CPU_segfault_addr,      "cpu-offsets drift: segfault_addr");
+static_assert(CRASH_CPU_segfault_was_write == CPU_segfault_was_write, "cpu-offsets drift: segfault_was_write");
+static_assert(CRASH_LOCAL_jit_exit_sp      == LOCAL_jit_exit_sp,      "cpu-offsets drift: jit_exit_sp");
 
 static void crash_handler(int sig, siginfo_t *info, void *ctx) {
 #if defined(__aarch64__) && defined(GUEST_ARM64)
@@ -63,9 +88,13 @@ static void crash_handler(int sig, siginfo_t *info, void *ctx) {
         uint64_t esr = uc->uc_mcontext->__es.__esr;
         int was_write = (esr & 0x40) != 0;
 
-        // Write crash info directly to cpu_state via _cpu pointer
-        *(uint64_t *)(cpu_ptr + CRASH_CPU_segfault_addr) = guest_addr;
-        *(int *)(cpu_ptr + CRASH_CPU_segfault_was_write) = was_write;
+        // Write crash info directly to cpu_state via _cpu pointer.
+        // Each store must match the field's real width: segfault_was_write is a
+        // `bool`, and the previous `*(int *)` store wrote 4 bytes over it and the
+        // padding before `trapno`. The generated gadgets use `strb` for the same
+        // field, so 1 byte is the correct width on both sides.
+        *(addr_t *)(cpu_ptr + CRASH_CPU_segfault_addr) = guest_addr;
+        *(bool *)(cpu_ptr + CRASH_CPU_segfault_was_write) = (bool)was_write;
         // Restore guest PC to block start for re-execution
         *(uint64_t *)(cpu_ptr + CRASH_CPU_pc) = (uint64_t)jit_saved_pc;
 
