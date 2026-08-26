@@ -1,0 +1,48 @@
+{
+  "host": {
+    "c": {
+      "id": "clang",
+      "exelist": [
+        "clang",
+        "-arch",
+        "arm64",
+        "-isysroot",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk",
+        "-miphoneos-version-min=14.0"
+      ],
+      "linker_exelist": [
+        "clang",
+        "-arch",
+        "arm64",
+        "-isysroot",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk",
+        "-miphoneos-version-min=14.0"
+      ],
+      "file_suffixes": [
+        "c"
+      ],
+      "default_suffix": "c",
+      "version": "17.0.0",
+      "full_version": "Apple clang version 17.0.0 (clang-1700.6.3.2)",
+      "linker_id": "ld64"
+    }
+  },
+  "build": {
+    "c": {
+      "id": "clang",
+      "exelist": [
+        "cc"
+      ],
+      "linker_exelist": [
+        "cc"
+      ],
+      "file_suffixes": [
+        "c"
+      ],
+      "default_suffix": "c",
+      "version": "17.0.0",
+      "full_version": "Apple clang version 17.0.0 (clang-1700.6.3.2)",
+      "linker_id": "ld64"
+    }
+  }
+}

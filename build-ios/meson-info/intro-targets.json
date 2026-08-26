@@ -1,0 +1,483 @@
+[
+  {
+    "name": "vdso-arm64",
+    "id": "9ccc859@@vdso-arm64@cus",
+    "type": "custom",
+    "defined_in": "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/vdso/arm64/meson.build",
+    "filename": [
+      "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/vdso/arm64/libvdso.so.elf"
+    ],
+    "build_by_default": false,
+    "target_sources": [
+      {
+        "language": "unknown",
+        "compiler": [
+          "/opt/homebrew/opt/llvm/bin/clang",
+          "-target",
+          "aarch64-linux-gnu",
+          "-fuse-ld=lld",
+          "-o",
+          "@OUTPUT@",
+          "@INPUT0@",
+          "@INPUT1@",
+          "-nostdlib",
+          "-Wl,-T,@INPUT2@",
+          "-Wl,--hash-style,sysv",
+          "-shared",
+          "-fPIC",
+          "-ffreestanding"
+        ],
+        "parameters": [],
+        "sources": [
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/vdso/arm64/vdso.S",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/vdso/arm64/vdso.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/vdso/arm64/vdso.lds"
+        ],
+        "generated_sources": []
+      }
+    ],
+    "extra_files": [],
+    "subproject": null,
+    "dependencies": [],
+    "depends": [],
+    "installed": false
+  },
+  {
+    "name": "offsets",
+    "id": "offsets@cus",
+    "type": "custom",
+    "defined_in": "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/meson.build",
+    "filename": [
+      "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/cpu-offsets.h"
+    ],
+    "build_by_default": false,
+    "target_sources": [
+      {
+        "language": "unknown",
+        "compiler": [
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/tools/staticdefine.sh",
+          "@OUTDIR@/compile_commands.json",
+          "@INPUT@",
+          "@OUTPUT@",
+          "@DEPFILE@"
+        ],
+        "parameters": [],
+        "sources": [
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/asbestos/offsets.c"
+        ],
+        "generated_sources": []
+      }
+    ],
+    "extra_files": [],
+    "subproject": null,
+    "dependencies": [],
+    "depends": [],
+    "installed": false
+  },
+  {
+    "name": "ish_emu",
+    "id": "ish_emu@sta",
+    "type": "static library",
+    "defined_in": "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/meson.build",
+    "filename": [
+      "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/libish_emu.a"
+    ],
+    "build_by_default": true,
+    "target_sources": [
+      {
+        "language": "c",
+        "machine": "host",
+        "compiler": [
+          "clang",
+          "-arch",
+          "arm64",
+          "-isysroot",
+          "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk",
+          "-miphoneos-version-min=14.0"
+        ],
+        "parameters": [
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/libish_emu.a.p",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/vdso/arm64",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/vdso/arm64",
+          "-fdiagnostics-color=always",
+          "-Wall",
+          "-Winvalid-pch",
+          "-Wextra",
+          "-std=gnu11",
+          "-O3",
+          "-Wimplicit-fallthrough",
+          "-Wtautological-constant-in-range-compare",
+          "-DLOG_HANDLER_NSLOG=1",
+          "-DENGINE_ASBESTOS=1",
+          "-DGUEST_ARM64=1",
+          "-Wno-switch"
+        ],
+        "sources": [
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/emu/tlb.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/emu/arch/arm64/fpu.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/asbestos/asbestos.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/asbestos/guest-arm64/gen.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/asbestos/guest-arm64/crypto_helpers.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/asbestos/helpers.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/native_offload_sym.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/native_offload_sym_builtins.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/native_offload_prebuilt.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/asbestos/guest-arm64/gadgets-aarch64/entry.S",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/asbestos/guest-arm64/gadgets-aarch64/memory.S",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/asbestos/guest-arm64/gadgets-aarch64/control.S",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/asbestos/guest-arm64/gadgets-aarch64/math.S",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/asbestos/guest-arm64/gadgets-aarch64/bits.S",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/asbestos/guest-arm64/gadgets-aarch64/crypto.S"
+        ],
+        "generated_sources": [],
+        "unity_sources": []
+      },
+      {
+        "linker": [
+          "ar"
+        ],
+        "parameters": [
+          "csr"
+        ]
+      }
+    ],
+    "extra_files": [],
+    "subproject": null,
+    "dependencies": [],
+    "depends": [],
+    "installed": false
+  },
+  {
+    "name": "fakefs",
+    "id": "fakefs@sta",
+    "type": "static library",
+    "defined_in": "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/meson.build",
+    "filename": [
+      "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/libfakefs.a"
+    ],
+    "build_by_default": true,
+    "target_sources": [
+      {
+        "language": "c",
+        "machine": "host",
+        "compiler": [
+          "clang",
+          "-arch",
+          "arm64",
+          "-isysroot",
+          "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk",
+          "-miphoneos-version-min=14.0"
+        ],
+        "parameters": [
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/libfakefs.a.p",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/vdso/arm64",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/vdso/arm64",
+          "-fdiagnostics-color=always",
+          "-Wall",
+          "-Winvalid-pch",
+          "-Wextra",
+          "-std=gnu11",
+          "-O3",
+          "-Wimplicit-fallthrough",
+          "-Wtautological-constant-in-range-compare",
+          "-DLOG_HANDLER_NSLOG=1",
+          "-DENGINE_ASBESTOS=1",
+          "-DGUEST_ARM64=1",
+          "-Wno-switch"
+        ],
+        "sources": [
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/fake-db.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/fake-migrate.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/fake-rebuild.c"
+        ],
+        "generated_sources": [],
+        "unity_sources": []
+      },
+      {
+        "linker": [
+          "ar"
+        ],
+        "parameters": [
+          "csr"
+        ]
+      }
+    ],
+    "extra_files": [],
+    "subproject": null,
+    "dependencies": [
+      "sqlite3"
+    ],
+    "depends": [],
+    "installed": false
+  },
+  {
+    "name": "ish",
+    "id": "ish@sta",
+    "type": "static library",
+    "defined_in": "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/meson.build",
+    "filename": [
+      "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/libish.a"
+    ],
+    "build_by_default": true,
+    "target_sources": [
+      {
+        "language": "c",
+        "machine": "host",
+        "compiler": [
+          "clang",
+          "-arch",
+          "arm64",
+          "-isysroot",
+          "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk",
+          "-miphoneos-version-min=14.0"
+        ],
+        "parameters": [
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/libish.a.p",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/vdso/arm64",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/vdso/arm64",
+          "-fdiagnostics-color=always",
+          "-Wall",
+          "-Winvalid-pch",
+          "-Wextra",
+          "-std=gnu11",
+          "-O3",
+          "-Wimplicit-fallthrough",
+          "-Wtautological-constant-in-range-compare",
+          "-DLOG_HANDLER_NSLOG=1",
+          "-DENGINE_ASBESTOS=1",
+          "-DGUEST_ARM64=1",
+          "-Wno-switch"
+        ],
+        "sources": [
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/init.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/errno.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/calls.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/arch/arm64/calls.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/memory.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/user.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/vdso.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/task.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/group.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/log.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/fork.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/exec.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/exit.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/time.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/mmap.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/uname.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/tls.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/futex.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/getset.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/signal.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/resource.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/random.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/misc.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/eventfd.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/pidfd.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/inotify.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/ipc.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/ptrace.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/native_offload.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/fs.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/fs_info.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/mount.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/fd.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/inode.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/stat.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/dir.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/generic.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/path.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/real.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/fake.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/proc.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/proc/entry.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/proc/ish.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/proc/net.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/proc/root.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/proc/pid.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/dyndev.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/adhoc.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/sock.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/pipe.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/sockrestart.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/lock.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/dev.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/mem.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/tty.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/tty-real.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/pty.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/tmp.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/fs/poll.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/poll.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/kernel/epoll.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/util/timer.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/util/sync.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/util/fifo.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/util/fchdir.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/util/signpost.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/platform/darwin.c"
+        ],
+        "generated_sources": [],
+        "unity_sources": []
+      },
+      {
+        "linker": [
+          "ar"
+        ],
+        "parameters": [
+          "csr"
+        ]
+      }
+    ],
+    "extra_files": [],
+    "subproject": null,
+    "dependencies": [],
+    "depends": [],
+    "installed": false
+  },
+  {
+    "name": "fakefsify",
+    "id": "f9d35d4@@fakefsify@exe",
+    "type": "executable",
+    "defined_in": "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/tools/meson.build",
+    "filename": [
+      "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/tools/fakefsify"
+    ],
+    "build_by_default": true,
+    "target_sources": [
+      {
+        "language": "c",
+        "machine": "host",
+        "compiler": [
+          "clang",
+          "-arch",
+          "arm64",
+          "-isysroot",
+          "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk",
+          "-miphoneos-version-min=14.0"
+        ],
+        "parameters": [
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/tools/fakefsify.p",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/tools",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/tools",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/vdso/arm64",
+          "-I/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/vdso/arm64",
+          "-I/opt/homebrew/opt/libarchive/include",
+          "-fdiagnostics-color=always",
+          "-Wall",
+          "-Winvalid-pch",
+          "-Wextra",
+          "-std=gnu11",
+          "-O3",
+          "-Wimplicit-fallthrough",
+          "-Wtautological-constant-in-range-compare",
+          "-DLOG_HANDLER_NSLOG=1",
+          "-DENGINE_ASBESTOS=1",
+          "-DGUEST_ARM64=1",
+          "-Wno-switch"
+        ],
+        "sources": [
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/tools/fakefsify.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/tools/fakefs.c",
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/util/fchdir.c"
+        ],
+        "generated_sources": [],
+        "unity_sources": []
+      },
+      {
+        "linker": [
+          "clang",
+          "-arch",
+          "arm64",
+          "-isysroot",
+          "/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk",
+          "-miphoneos-version-min=14.0"
+        ],
+        "parameters": [
+          "-L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/usr/lib",
+          "-Wl,-dead_strip_dylibs",
+          "-Wl,-headerpad_max_install_names",
+          "libfakefs.a",
+          "/opt/homebrew/opt/libarchive/lib/libarchive.a",
+          "-lsqlite3"
+        ]
+      }
+    ],
+    "extra_files": [],
+    "subproject": null,
+    "dependencies": [
+      "archive"
+    ],
+    "depends": [],
+    "win_subsystem": "console",
+    "installed": false
+  },
+  {
+    "name": "unfakefsify",
+    "id": "f9d35d4@@unfakefsify@cus",
+    "type": "custom",
+    "defined_in": "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/tools/meson.build",
+    "filename": [
+      "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/tools/unfakefsify"
+    ],
+    "build_by_default": true,
+    "target_sources": [
+      {
+        "language": "unknown",
+        "compiler": [
+          "/bin/ln",
+          "-sf",
+          "fakefsify",
+          "@OUTPUT@"
+        ],
+        "parameters": [],
+        "sources": [],
+        "generated_sources": []
+      }
+    ],
+    "extra_files": [],
+    "subproject": null,
+    "dependencies": [],
+    "depends": [],
+    "installed": false
+  },
+  {
+    "name": "ish-gdb.gdb",
+    "id": "ish-gdb.gdb@cus",
+    "type": "custom",
+    "defined_in": "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/meson.build",
+    "filename": [
+      "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/build-ios/ish-gdb.gdb"
+    ],
+    "build_by_default": true,
+    "target_sources": [
+      {
+        "language": "unknown",
+        "compiler": [
+          "/bin/ln",
+          "-sf",
+          "@INPUT@",
+          "@OUTPUT@"
+        ],
+        "parameters": [],
+        "sources": [
+          "/Users/brooks/Documents/agentprojects/\u996d\u888b/OpenMinis/deps/ish/ish-gdb.gdb"
+        ],
+        "generated_sources": []
+      }
+    ],
+    "extra_files": [],
+    "subproject": null,
+    "dependencies": [],
+    "depends": [],
+    "installed": false
+  }
+]

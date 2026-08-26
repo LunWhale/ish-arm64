@@ -1,0 +1,329 @@
+Build started at 2026-08-14T22:16:24.952670
+Main binary: /opt/homebrew/opt/python@3.14/bin/python3.14
+Build Options: -Dbuildtype=release -Dlog= -Dlog_handler=nslog -Dkernel=ish -Dengine=asbestos -Dguest_arch=arm64 '--cross-file=/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/ios-cross.txt'
+Python system: Darwin
+The Meson build system
+Version: 1.12.0
+Source dir: /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish
+Build dir: /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios
+Build type: cross build
+Project name: ish
+Project version: undefined
+C compiler for the host machine: clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 (clang 17.0.0 "Apple clang version 17.0.0 (clang-1700.6.3.2)")
+C linker for the host machine: clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 ld64 1230.1
+-----------
+Detecting archiver via: `ar --version` -> 1
+stderr:
+usage:  ar -d [-TLsv] archive file ...
+	ar -m [-TLsv] archive file ...
+	ar -m [-abiTLsv] position archive file ...
+	ar -p [-TLsv] archive [file ...]
+	ar -q [-cTLsv] archive file ...
+	ar -r [-cuTLsv] archive file ...
+	ar -r [-abciuTLsv] position archive file ...
+	ar -t [-TLsv] archive [file ...]
+	ar -x [-ouTLsv] archive [file ...]
+-----------
+C compiler for the build machine: cc (clang 17.0.0 "Apple clang version 17.0.0 (clang-1700.6.3.2)")
+C linker for the build machine: cc ld64 1230.1
+-----------
+Detecting archiver via: `llvm-ar-17 --version` -> [Errno 2] No such file or directory: 'llvm-ar-17'
+-----------
+Detecting archiver via: `llvm-ar --version` -> [Errno 2] No such file or directory: 'llvm-ar'
+-----------
+Detecting archiver via: `ar --version` -> 1
+stderr:
+usage:  ar -d [-TLsv] archive file ...
+	ar -m [-TLsv] archive file ...
+	ar -m [-abiTLsv] position archive file ...
+	ar -p [-TLsv] archive [file ...]
+	ar -q [-cTLsv] archive file ...
+	ar -r [-cuTLsv] archive file ...
+	ar -r [-abciuTLsv] position archive file ...
+	ar -t [-TLsv] archive [file ...]
+	ar -x [-ouTLsv] archive [file ...]
+-----------
+Build machine cpu family: aarch64
+Build machine cpu: aarch64
+Host machine cpu family: aarch64
+Host machine cpu: aarch64
+Target machine cpu family: aarch64
+Target machine cpu: aarch64
+Dependency threads for host machine found: YES unknown (cached)
+Running compile:
+Working directory:  /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpyywf4juh
+Code:
+int main(void) { return 0; }
+
+-----------
+Command line: `clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/usr/lib '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpyywf4juh/testfile.c' -o '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpyywf4juh/output.exe' -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -lrt -Wl,-undefined,dynamic_lookup` -> 1
+stderr:
+ld: warning: -undefined dynamic_lookup is deprecated on iOS
+ld: library 'rt' not found
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
+-----------
+Library rt found: NO
+Running compile:
+Working directory:  /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpd60ud9pf
+Code:
+int main(void) { return 0; }
+
+-----------
+Command line: `clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/usr/lib '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpd60ud9pf/testfile.c' -o '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpd60ud9pf/output.exe' -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -lm -Wl,-undefined,dynamic_lookup` -> 0
+stderr:
+ld: warning: -undefined dynamic_lookup is deprecated on iOS
+-----------
+Library m found: YES
+Running compile:
+Working directory:  /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpnrzg5hc2
+Code:
+int main(void) { return 0; }
+
+-----------
+Command line: `clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/usr/lib '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpnrzg5hc2/testfile.c' -o '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpnrzg5hc2/output.exe' -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -ldl -Wl,-undefined,dynamic_lookup` -> 0
+stderr:
+ld: warning: -undefined dynamic_lookup is deprecated on iOS
+-----------
+Library dl found: YES
+Running compile:
+Working directory:  /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmphr9y14lu
+Code:
+int main(void) { return 0; }
+
+-----------
+Command line: `clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/usr/lib '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmphr9y14lu/testfile.c' -o '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmphr9y14lu/output.exe' -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -lsqlite3 -Wl,-undefined,dynamic_lookup` -> 0
+stderr:
+ld: warning: -undefined dynamic_lookup is deprecated on iOS
+-----------
+Library sqlite3 found: YES
+Program /opt/homebrew/opt/llvm/bin/clang found: YES (/opt/homebrew/opt/llvm/bin/clang)
+Program ./check-cc-arm64.sh found: YES (/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/vdso/arm64/./check-cc-arm64.sh)
+Running command: '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/vdso/arm64/./check-cc-arm64.sh' /opt/homebrew/opt/llvm/bin/clang
+--- stdout ---
+ARM64 cross-compiler check passed
+
+--- stderr ---
+
+
+Program tools/staticdefine.sh found: YES (/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/tools/staticdefine.sh)
+Running compile:
+Working directory:  /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpkprk33qa
+Code:
+int main(void) { return 0; }
+
+-----------
+Command line: `clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/usr/lib '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpkprk33qa/testfile.c' -o '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpkprk33qa/output.exe' -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -lunicorn -Wl,-undefined,dynamic_lookup` -> 1
+stderr:
+ld: warning: -undefined dynamic_lookup is deprecated on iOS
+ld: library 'unicorn' not found
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
+-----------
+Using cached compile:
+Cached command line:  clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpc2xxvjn7/testfile.c -o /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpc2xxvjn7/output.obj -c -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -Werror=unknown-warning-option -Werror=unused-command-line-argument -Werror=ignored-optimization-argument 
+
+Code:
+ 
+        #include <stddef.h>
+        int main(void) {
+            void * something;
+            return 0;
+        }
+Cached compiler stdout:
+ 
+Cached compiler stderr:
+ 
+Using cached compile:
+Cached command line:  clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 /var/folders/1k/j7fhkfbx45n9bm363jpkd7nh0000gn/T/tmp905h4qt9/testfile.c -E -P -P -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration 
+
+Code:
+ 
+        
+        #ifndef sizeof(void *)
+        # define sizeof(void *) "MESON_GET_DEFINE_UNDEFINED_SENTINEL"
+        #endif
+        "MESON_GET_DEFINE_DELIMITER_START"
+sizeof(void *)
+"MESON_GET_DEFINE_DELIMITER_END"
+Cached compiler stdout:
+  "MESON_GET_DEFINE_DELIMITER_START"
+sizeof(void *)
+"MESON_GET_DEFINE_DELIMITER_END"
+
+Cached compiler stderr:
+ /var/folders/1k/j7fhkfbx45n9bm363jpkd7nh0000gn/T/tmp905h4qt9/testfile.c:3:23: warning: extra tokens at end of #ifndef directive [-Wextra-tokens]
+    3 |         #ifndef sizeof(void *)
+      |                       ^
+      |                       //
+/var/folders/1k/j7fhkfbx45n9bm363jpkd7nh0000gn/T/tmp905h4qt9/testfile.c:4:30: error: expected comma in macro parameter list
+    4 |         # define sizeof(void *) "MESON_GET_DEFINE_UNDEFINED_SENTINEL"
+      |                              ^
+1 warning and 1 error generated.
+
+Using cached compile:
+Cached command line:  clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpfrpl7ebg/testfile.c -o /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpfrpl7ebg/output.obj -c -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -Werror=unknown-warning-option -Werror=unused-command-line-argument -Werror=ignored-optimization-argument 
+
+Code:
+ 
+        #include <stddef.h>
+        int main(void) { static int a[1-2*!(sizeof(void *) >= 0)]; a[0]=0; return 0; }
+Cached compiler stdout:
+ 
+Cached compiler stderr:
+ 
+Using cached compile:
+Cached command line:  clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpm6s64gu8/testfile.c -o /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpm6s64gu8/output.obj -c -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -Werror=unknown-warning-option -Werror=unused-command-line-argument -Werror=ignored-optimization-argument 
+
+Code:
+ 
+        #include <stddef.h>
+        int main(void) { static int a[1-2*!(sizeof(void *) > 0)]; a[0]=0; return 0; }
+Cached compiler stdout:
+ 
+Cached compiler stderr:
+ 
+Using cached compile:
+Cached command line:  clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmp5t1rbprf/testfile.c -o /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmp5t1rbprf/output.obj -c -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -Werror=unknown-warning-option -Werror=unused-command-line-argument -Werror=ignored-optimization-argument 
+
+Code:
+ 
+        #include <stddef.h>
+        int main(void) { static int a[1-2*!(sizeof(void *) > 1)]; a[0]=0; return 0; }
+Cached compiler stdout:
+ 
+Cached compiler stderr:
+ 
+Using cached compile:
+Cached command line:  clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpndhqj0rl/testfile.c -o /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpndhqj0rl/output.obj -c -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -Werror=unknown-warning-option -Werror=unused-command-line-argument -Werror=ignored-optimization-argument 
+
+Code:
+ 
+        #include <stddef.h>
+        int main(void) { static int a[1-2*!(sizeof(void *) > 3)]; a[0]=0; return 0; }
+Cached compiler stdout:
+ 
+Cached compiler stderr:
+ 
+Using cached compile:
+Cached command line:  clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpjncu8s1c/testfile.c -o /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpjncu8s1c/output.obj -c -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -Werror=unknown-warning-option -Werror=unused-command-line-argument -Werror=ignored-optimization-argument 
+
+Code:
+ 
+        #include <stddef.h>
+        int main(void) { static int a[1-2*!(sizeof(void *) > 7)]; a[0]=0; return 0; }
+Cached compiler stdout:
+ 
+Cached compiler stderr:
+ 
+Using cached compile:
+Cached command line:  clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpwtzryyib/testfile.c -o /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpwtzryyib/output.obj -c -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -Werror=unknown-warning-option -Werror=unused-command-line-argument -Werror=ignored-optimization-argument 
+
+Code:
+ 
+        #include <stddef.h>
+        int main(void) { static int a[1-2*!(sizeof(void *) > 15)]; a[0]=0; return 0; }
+Cached compiler stdout:
+ 
+Cached compiler stderr:
+ /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpwtzryyib/testfile.c:3:39: error: 'a' declared as an array with a negative size
+    3 |         int main(void) { static int a[1-2*!(sizeof(void *) > 15)]; a[0]=0; return 0; }
+      |                                       ^~~~~~~~~~~~~~~~~~~~~~~~~~
+1 error generated.
+
+Using cached compile:
+Cached command line:  clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmplokjse_r/testfile.c -o /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmplokjse_r/output.obj -c -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -Werror=unknown-warning-option -Werror=unused-command-line-argument -Werror=ignored-optimization-argument 
+
+Code:
+ 
+        #include <stddef.h>
+        int main(void) { static int a[1-2*!(sizeof(void *) <= 11)]; a[0]=0; return 0; }
+Cached compiler stdout:
+ 
+Cached compiler stderr:
+ 
+Using cached compile:
+Cached command line:  clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpg8oo3mrk/testfile.c -o /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpg8oo3mrk/output.obj -c -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -Werror=unknown-warning-option -Werror=unused-command-line-argument -Werror=ignored-optimization-argument 
+
+Code:
+ 
+        #include <stddef.h>
+        int main(void) { static int a[1-2*!(sizeof(void *) <= 9)]; a[0]=0; return 0; }
+Cached compiler stdout:
+ 
+Cached compiler stderr:
+ 
+Using cached compile:
+Cached command line:  clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmp82qnvb8f/testfile.c -o /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmp82qnvb8f/output.obj -c -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -Werror=unknown-warning-option -Werror=unused-command-line-argument -Werror=ignored-optimization-argument 
+
+Code:
+ 
+        #include <stddef.h>
+        int main(void) { static int a[1-2*!(sizeof(void *) <= 8)]; a[0]=0; return 0; }
+Cached compiler stdout:
+ 
+Cached compiler stderr:
+ 
+Running compile:
+Working directory:  /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpgfqs69re
+Code:
+
+-----------
+Command line: `clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpgfqs69re/testfile.c' -o '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpgfqs69re/output.obj' -c -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration -Werror=unknown-warning-option -Werror=unused-command-line-argument -Werror=ignored-optimization-argument --print-search-dirs` -> 0
+stdout:
+programs: =/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin
+libraries: =/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/17
+-----------
+Library unicorn found: NO
+Pkg-config binary for host machine specified from cross file, native file, or env var as ['false']
+WARNING: Found pkg-config '/usr/bin/false' but it failed when ran
+Found pkg-config: NO
+Pkg-config for machine host machine not found. Giving up.
+Finding framework path by running:  clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -v -E - 
+
+Looking for framework libarchive in /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/Frameworks
+Looking for framework libarchive in /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/System/Library/SubFrameworks
+CMake binary for host machine is not cached
+CMake binary missing from cross or native file, or env var undefined.
+Default target is not allowed for cross use
+Found CMake: NO
+CMake binary for machine host machine not found. Giving up.
+Run-time dependency libarchive found: NO  (tried pkg-config, framework and cmake)
+Library archive found: NO
+Running compile:
+Working directory:  /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpbjoxdanm
+Code:
+int main(void) { return 0; }
+
+-----------
+Command line: `clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/usr/lib '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpbjoxdanm/testfile.c' -o '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpbjoxdanm/output.exe' -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration /opt/homebrew/opt/libarchive/lib/libarchive.dylib -Wl,-undefined,dynamic_lookup` -> 1
+stderr:
+ld: warning: -undefined dynamic_lookup is deprecated on iOS
+ld: building for 'iOS', but linking in dylib (/opt/homebrew/Cellar/libarchive/3.8.8/lib/libarchive.13.dylib) built for 'macOS'
+clang: error: linker command failed with exit code 1 (use -v to see invocation)
+-----------
+Running compile:
+Working directory:  /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpg31dvr4f
+Code:
+int main(void) { return 0; }
+
+-----------
+Command line: `clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/usr/lib '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpg31dvr4f/testfile.c' -o '/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/meson-private/tmpg31dvr4f/output.exe' -O0 -U_FORTIFY_SOURCE -Werror=implicit-function-declaration /opt/homebrew/opt/libarchive/lib/libarchive.a -Wl,-undefined,dynamic_lookup` -> 0
+stderr:
+ld: warning: -undefined dynamic_lookup is deprecated on iOS
+-----------
+Library archive found: YES
+Program tests/e2e/e2e.bash found: YES (/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/tests/e2e/e2e.bash)
+Adding test "e2e"
+Build targets in project: 8
+
+ish undefined
+
+  User defined options
+    Cross files: /Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios/ios-cross.txt
+    buildtype  : release
+    engine     : asbestos
+    guest_arch : arm64
+    kernel     : ish
+    log        : 
+    log_handler: nslog
+
+Found ninja-1.13.2 at /opt/homebrew/bin/ninja

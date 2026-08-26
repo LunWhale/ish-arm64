@@ -1,0 +1,530 @@
+[
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/emu_tlb.c.o -MF libish_emu.a.p/emu_tlb.c.o.d -o libish_emu.a.p/emu_tlb.c.o -c ../emu/tlb.c",
+    "file": "../emu/tlb.c",
+    "output": "libish_emu.a.p/emu_tlb.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/emu_arch_arm64_fpu.c.o -MF libish_emu.a.p/emu_arch_arm64_fpu.c.o.d -o libish_emu.a.p/emu_arch_arm64_fpu.c.o -c ../emu/arch/arm64/fpu.c",
+    "file": "../emu/arch/arm64/fpu.c",
+    "output": "libish_emu.a.p/emu_arch_arm64_fpu.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/asbestos_asbestos.c.o -MF libish_emu.a.p/asbestos_asbestos.c.o.d -o libish_emu.a.p/asbestos_asbestos.c.o -c ../asbestos/asbestos.c",
+    "file": "../asbestos/asbestos.c",
+    "output": "libish_emu.a.p/asbestos_asbestos.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/asbestos_guest-arm64_gen.c.o -MF libish_emu.a.p/asbestos_guest-arm64_gen.c.o.d -o libish_emu.a.p/asbestos_guest-arm64_gen.c.o -c ../asbestos/guest-arm64/gen.c",
+    "file": "../asbestos/guest-arm64/gen.c",
+    "output": "libish_emu.a.p/asbestos_guest-arm64_gen.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/asbestos_guest-arm64_crypto_helpers.c.o -MF libish_emu.a.p/asbestos_guest-arm64_crypto_helpers.c.o.d -o libish_emu.a.p/asbestos_guest-arm64_crypto_helpers.c.o -c ../asbestos/guest-arm64/crypto_helpers.c",
+    "file": "../asbestos/guest-arm64/crypto_helpers.c",
+    "output": "libish_emu.a.p/asbestos_guest-arm64_crypto_helpers.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/asbestos_helpers.c.o -MF libish_emu.a.p/asbestos_helpers.c.o.d -o libish_emu.a.p/asbestos_helpers.c.o -c ../asbestos/helpers.c",
+    "file": "../asbestos/helpers.c",
+    "output": "libish_emu.a.p/asbestos_helpers.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/kernel_native_offload_sym.c.o -MF libish_emu.a.p/kernel_native_offload_sym.c.o.d -o libish_emu.a.p/kernel_native_offload_sym.c.o -c ../kernel/native_offload_sym.c",
+    "file": "../kernel/native_offload_sym.c",
+    "output": "libish_emu.a.p/kernel_native_offload_sym.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/kernel_native_offload_sym_builtins.c.o -MF libish_emu.a.p/kernel_native_offload_sym_builtins.c.o.d -o libish_emu.a.p/kernel_native_offload_sym_builtins.c.o -c ../kernel/native_offload_sym_builtins.c",
+    "file": "../kernel/native_offload_sym_builtins.c",
+    "output": "libish_emu.a.p/kernel_native_offload_sym_builtins.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/kernel_native_offload_prebuilt.c.o -MF libish_emu.a.p/kernel_native_offload_prebuilt.c.o.d -o libish_emu.a.p/kernel_native_offload_prebuilt.c.o -c ../kernel/native_offload_prebuilt.c",
+    "file": "../kernel/native_offload_prebuilt.c",
+    "output": "libish_emu.a.p/kernel_native_offload_prebuilt.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_entry.S.o -MF libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_entry.S.o.d -o libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_entry.S.o -c ../asbestos/guest-arm64/gadgets-aarch64/entry.S",
+    "file": "../asbestos/guest-arm64/gadgets-aarch64/entry.S",
+    "output": "libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_entry.S.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_memory.S.o -MF libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_memory.S.o.d -o libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_memory.S.o -c ../asbestos/guest-arm64/gadgets-aarch64/memory.S",
+    "file": "../asbestos/guest-arm64/gadgets-aarch64/memory.S",
+    "output": "libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_memory.S.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_control.S.o -MF libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_control.S.o.d -o libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_control.S.o -c ../asbestos/guest-arm64/gadgets-aarch64/control.S",
+    "file": "../asbestos/guest-arm64/gadgets-aarch64/control.S",
+    "output": "libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_control.S.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_math.S.o -MF libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_math.S.o.d -o libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_math.S.o -c ../asbestos/guest-arm64/gadgets-aarch64/math.S",
+    "file": "../asbestos/guest-arm64/gadgets-aarch64/math.S",
+    "output": "libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_math.S.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_bits.S.o -MF libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_bits.S.o.d -o libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_bits.S.o -c ../asbestos/guest-arm64/gadgets-aarch64/bits.S",
+    "file": "../asbestos/guest-arm64/gadgets-aarch64/bits.S",
+    "output": "libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_bits.S.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish_emu.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_crypto.S.o -MF libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_crypto.S.o.d -o libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_crypto.S.o -c ../asbestos/guest-arm64/gadgets-aarch64/crypto.S",
+    "file": "../asbestos/guest-arm64/gadgets-aarch64/crypto.S",
+    "output": "libish_emu.a.p/asbestos_guest-arm64_gadgets-aarch64_crypto.S.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibfakefs.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libfakefs.a.p/fs_fake-db.c.o -MF libfakefs.a.p/fs_fake-db.c.o.d -o libfakefs.a.p/fs_fake-db.c.o -c ../fs/fake-db.c",
+    "file": "../fs/fake-db.c",
+    "output": "libfakefs.a.p/fs_fake-db.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibfakefs.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libfakefs.a.p/fs_fake-migrate.c.o -MF libfakefs.a.p/fs_fake-migrate.c.o.d -o libfakefs.a.p/fs_fake-migrate.c.o -c ../fs/fake-migrate.c",
+    "file": "../fs/fake-migrate.c",
+    "output": "libfakefs.a.p/fs_fake-migrate.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibfakefs.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libfakefs.a.p/fs_fake-rebuild.c.o -MF libfakefs.a.p/fs_fake-rebuild.c.o.d -o libfakefs.a.p/fs_fake-rebuild.c.o -c ../fs/fake-rebuild.c",
+    "file": "../fs/fake-rebuild.c",
+    "output": "libfakefs.a.p/fs_fake-rebuild.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_init.c.o -MF libish.a.p/kernel_init.c.o.d -o libish.a.p/kernel_init.c.o -c ../kernel/init.c",
+    "file": "../kernel/init.c",
+    "output": "libish.a.p/kernel_init.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_errno.c.o -MF libish.a.p/kernel_errno.c.o.d -o libish.a.p/kernel_errno.c.o -c ../kernel/errno.c",
+    "file": "../kernel/errno.c",
+    "output": "libish.a.p/kernel_errno.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_calls.c.o -MF libish.a.p/kernel_calls.c.o.d -o libish.a.p/kernel_calls.c.o -c ../kernel/calls.c",
+    "file": "../kernel/calls.c",
+    "output": "libish.a.p/kernel_calls.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_arch_arm64_calls.c.o -MF libish.a.p/kernel_arch_arm64_calls.c.o.d -o libish.a.p/kernel_arch_arm64_calls.c.o -c ../kernel/arch/arm64/calls.c",
+    "file": "../kernel/arch/arm64/calls.c",
+    "output": "libish.a.p/kernel_arch_arm64_calls.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_memory.c.o -MF libish.a.p/kernel_memory.c.o.d -o libish.a.p/kernel_memory.c.o -c ../kernel/memory.c",
+    "file": "../kernel/memory.c",
+    "output": "libish.a.p/kernel_memory.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_user.c.o -MF libish.a.p/kernel_user.c.o.d -o libish.a.p/kernel_user.c.o -c ../kernel/user.c",
+    "file": "../kernel/user.c",
+    "output": "libish.a.p/kernel_user.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_vdso.c.o -MF libish.a.p/kernel_vdso.c.o.d -o libish.a.p/kernel_vdso.c.o -c ../kernel/vdso.c",
+    "file": "../kernel/vdso.c",
+    "output": "libish.a.p/kernel_vdso.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_task.c.o -MF libish.a.p/kernel_task.c.o.d -o libish.a.p/kernel_task.c.o -c ../kernel/task.c",
+    "file": "../kernel/task.c",
+    "output": "libish.a.p/kernel_task.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_group.c.o -MF libish.a.p/kernel_group.c.o.d -o libish.a.p/kernel_group.c.o -c ../kernel/group.c",
+    "file": "../kernel/group.c",
+    "output": "libish.a.p/kernel_group.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_log.c.o -MF libish.a.p/kernel_log.c.o.d -o libish.a.p/kernel_log.c.o -c ../kernel/log.c",
+    "file": "../kernel/log.c",
+    "output": "libish.a.p/kernel_log.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_fork.c.o -MF libish.a.p/kernel_fork.c.o.d -o libish.a.p/kernel_fork.c.o -c ../kernel/fork.c",
+    "file": "../kernel/fork.c",
+    "output": "libish.a.p/kernel_fork.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_exec.c.o -MF libish.a.p/kernel_exec.c.o.d -o libish.a.p/kernel_exec.c.o -c ../kernel/exec.c",
+    "file": "../kernel/exec.c",
+    "output": "libish.a.p/kernel_exec.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_exit.c.o -MF libish.a.p/kernel_exit.c.o.d -o libish.a.p/kernel_exit.c.o -c ../kernel/exit.c",
+    "file": "../kernel/exit.c",
+    "output": "libish.a.p/kernel_exit.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_time.c.o -MF libish.a.p/kernel_time.c.o.d -o libish.a.p/kernel_time.c.o -c ../kernel/time.c",
+    "file": "../kernel/time.c",
+    "output": "libish.a.p/kernel_time.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_mmap.c.o -MF libish.a.p/kernel_mmap.c.o.d -o libish.a.p/kernel_mmap.c.o -c ../kernel/mmap.c",
+    "file": "../kernel/mmap.c",
+    "output": "libish.a.p/kernel_mmap.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_uname.c.o -MF libish.a.p/kernel_uname.c.o.d -o libish.a.p/kernel_uname.c.o -c ../kernel/uname.c",
+    "file": "../kernel/uname.c",
+    "output": "libish.a.p/kernel_uname.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_tls.c.o -MF libish.a.p/kernel_tls.c.o.d -o libish.a.p/kernel_tls.c.o -c ../kernel/tls.c",
+    "file": "../kernel/tls.c",
+    "output": "libish.a.p/kernel_tls.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_futex.c.o -MF libish.a.p/kernel_futex.c.o.d -o libish.a.p/kernel_futex.c.o -c ../kernel/futex.c",
+    "file": "../kernel/futex.c",
+    "output": "libish.a.p/kernel_futex.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_getset.c.o -MF libish.a.p/kernel_getset.c.o.d -o libish.a.p/kernel_getset.c.o -c ../kernel/getset.c",
+    "file": "../kernel/getset.c",
+    "output": "libish.a.p/kernel_getset.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_signal.c.o -MF libish.a.p/kernel_signal.c.o.d -o libish.a.p/kernel_signal.c.o -c ../kernel/signal.c",
+    "file": "../kernel/signal.c",
+    "output": "libish.a.p/kernel_signal.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_resource.c.o -MF libish.a.p/kernel_resource.c.o.d -o libish.a.p/kernel_resource.c.o -c ../kernel/resource.c",
+    "file": "../kernel/resource.c",
+    "output": "libish.a.p/kernel_resource.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_random.c.o -MF libish.a.p/kernel_random.c.o.d -o libish.a.p/kernel_random.c.o -c ../kernel/random.c",
+    "file": "../kernel/random.c",
+    "output": "libish.a.p/kernel_random.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_misc.c.o -MF libish.a.p/kernel_misc.c.o.d -o libish.a.p/kernel_misc.c.o -c ../kernel/misc.c",
+    "file": "../kernel/misc.c",
+    "output": "libish.a.p/kernel_misc.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_eventfd.c.o -MF libish.a.p/kernel_eventfd.c.o.d -o libish.a.p/kernel_eventfd.c.o -c ../kernel/eventfd.c",
+    "file": "../kernel/eventfd.c",
+    "output": "libish.a.p/kernel_eventfd.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_pidfd.c.o -MF libish.a.p/kernel_pidfd.c.o.d -o libish.a.p/kernel_pidfd.c.o -c ../kernel/pidfd.c",
+    "file": "../kernel/pidfd.c",
+    "output": "libish.a.p/kernel_pidfd.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_inotify.c.o -MF libish.a.p/kernel_inotify.c.o.d -o libish.a.p/kernel_inotify.c.o -c ../kernel/inotify.c",
+    "file": "../kernel/inotify.c",
+    "output": "libish.a.p/kernel_inotify.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_ipc.c.o -MF libish.a.p/kernel_ipc.c.o.d -o libish.a.p/kernel_ipc.c.o -c ../kernel/ipc.c",
+    "file": "../kernel/ipc.c",
+    "output": "libish.a.p/kernel_ipc.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_ptrace.c.o -MF libish.a.p/kernel_ptrace.c.o.d -o libish.a.p/kernel_ptrace.c.o -c ../kernel/ptrace.c",
+    "file": "../kernel/ptrace.c",
+    "output": "libish.a.p/kernel_ptrace.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_native_offload.c.o -MF libish.a.p/kernel_native_offload.c.o.d -o libish.a.p/kernel_native_offload.c.o -c ../kernel/native_offload.c",
+    "file": "../kernel/native_offload.c",
+    "output": "libish.a.p/kernel_native_offload.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_fs.c.o -MF libish.a.p/kernel_fs.c.o.d -o libish.a.p/kernel_fs.c.o -c ../kernel/fs.c",
+    "file": "../kernel/fs.c",
+    "output": "libish.a.p/kernel_fs.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_fs_info.c.o -MF libish.a.p/kernel_fs_info.c.o.d -o libish.a.p/kernel_fs_info.c.o -c ../kernel/fs_info.c",
+    "file": "../kernel/fs_info.c",
+    "output": "libish.a.p/kernel_fs_info.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_mount.c.o -MF libish.a.p/fs_mount.c.o.d -o libish.a.p/fs_mount.c.o -c ../fs/mount.c",
+    "file": "../fs/mount.c",
+    "output": "libish.a.p/fs_mount.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_fd.c.o -MF libish.a.p/fs_fd.c.o.d -o libish.a.p/fs_fd.c.o -c ../fs/fd.c",
+    "file": "../fs/fd.c",
+    "output": "libish.a.p/fs_fd.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_inode.c.o -MF libish.a.p/fs_inode.c.o.d -o libish.a.p/fs_inode.c.o -c ../fs/inode.c",
+    "file": "../fs/inode.c",
+    "output": "libish.a.p/fs_inode.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_stat.c.o -MF libish.a.p/fs_stat.c.o.d -o libish.a.p/fs_stat.c.o -c ../fs/stat.c",
+    "file": "../fs/stat.c",
+    "output": "libish.a.p/fs_stat.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_dir.c.o -MF libish.a.p/fs_dir.c.o.d -o libish.a.p/fs_dir.c.o -c ../fs/dir.c",
+    "file": "../fs/dir.c",
+    "output": "libish.a.p/fs_dir.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_generic.c.o -MF libish.a.p/fs_generic.c.o.d -o libish.a.p/fs_generic.c.o -c ../fs/generic.c",
+    "file": "../fs/generic.c",
+    "output": "libish.a.p/fs_generic.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_path.c.o -MF libish.a.p/fs_path.c.o.d -o libish.a.p/fs_path.c.o -c ../fs/path.c",
+    "file": "../fs/path.c",
+    "output": "libish.a.p/fs_path.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_real.c.o -MF libish.a.p/fs_real.c.o.d -o libish.a.p/fs_real.c.o -c ../fs/real.c",
+    "file": "../fs/real.c",
+    "output": "libish.a.p/fs_real.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_fake.c.o -MF libish.a.p/fs_fake.c.o.d -o libish.a.p/fs_fake.c.o -c ../fs/fake.c",
+    "file": "../fs/fake.c",
+    "output": "libish.a.p/fs_fake.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_proc.c.o -MF libish.a.p/fs_proc.c.o.d -o libish.a.p/fs_proc.c.o -c ../fs/proc.c",
+    "file": "../fs/proc.c",
+    "output": "libish.a.p/fs_proc.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_proc_entry.c.o -MF libish.a.p/fs_proc_entry.c.o.d -o libish.a.p/fs_proc_entry.c.o -c ../fs/proc/entry.c",
+    "file": "../fs/proc/entry.c",
+    "output": "libish.a.p/fs_proc_entry.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_proc_ish.c.o -MF libish.a.p/fs_proc_ish.c.o.d -o libish.a.p/fs_proc_ish.c.o -c ../fs/proc/ish.c",
+    "file": "../fs/proc/ish.c",
+    "output": "libish.a.p/fs_proc_ish.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_proc_net.c.o -MF libish.a.p/fs_proc_net.c.o.d -o libish.a.p/fs_proc_net.c.o -c ../fs/proc/net.c",
+    "file": "../fs/proc/net.c",
+    "output": "libish.a.p/fs_proc_net.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_proc_root.c.o -MF libish.a.p/fs_proc_root.c.o.d -o libish.a.p/fs_proc_root.c.o -c ../fs/proc/root.c",
+    "file": "../fs/proc/root.c",
+    "output": "libish.a.p/fs_proc_root.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_proc_pid.c.o -MF libish.a.p/fs_proc_pid.c.o.d -o libish.a.p/fs_proc_pid.c.o -c ../fs/proc/pid.c",
+    "file": "../fs/proc/pid.c",
+    "output": "libish.a.p/fs_proc_pid.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_dyndev.c.o -MF libish.a.p/fs_dyndev.c.o.d -o libish.a.p/fs_dyndev.c.o -c ../fs/dyndev.c",
+    "file": "../fs/dyndev.c",
+    "output": "libish.a.p/fs_dyndev.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_adhoc.c.o -MF libish.a.p/fs_adhoc.c.o.d -o libish.a.p/fs_adhoc.c.o -c ../fs/adhoc.c",
+    "file": "../fs/adhoc.c",
+    "output": "libish.a.p/fs_adhoc.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_sock.c.o -MF libish.a.p/fs_sock.c.o.d -o libish.a.p/fs_sock.c.o -c ../fs/sock.c",
+    "file": "../fs/sock.c",
+    "output": "libish.a.p/fs_sock.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_pipe.c.o -MF libish.a.p/fs_pipe.c.o.d -o libish.a.p/fs_pipe.c.o -c ../fs/pipe.c",
+    "file": "../fs/pipe.c",
+    "output": "libish.a.p/fs_pipe.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_sockrestart.c.o -MF libish.a.p/fs_sockrestart.c.o.d -o libish.a.p/fs_sockrestart.c.o -c ../fs/sockrestart.c",
+    "file": "../fs/sockrestart.c",
+    "output": "libish.a.p/fs_sockrestart.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_lock.c.o -MF libish.a.p/fs_lock.c.o.d -o libish.a.p/fs_lock.c.o -c ../fs/lock.c",
+    "file": "../fs/lock.c",
+    "output": "libish.a.p/fs_lock.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_dev.c.o -MF libish.a.p/fs_dev.c.o.d -o libish.a.p/fs_dev.c.o -c ../fs/dev.c",
+    "file": "../fs/dev.c",
+    "output": "libish.a.p/fs_dev.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_mem.c.o -MF libish.a.p/fs_mem.c.o.d -o libish.a.p/fs_mem.c.o -c ../fs/mem.c",
+    "file": "../fs/mem.c",
+    "output": "libish.a.p/fs_mem.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_tty.c.o -MF libish.a.p/fs_tty.c.o.d -o libish.a.p/fs_tty.c.o -c ../fs/tty.c",
+    "file": "../fs/tty.c",
+    "output": "libish.a.p/fs_tty.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_tty-real.c.o -MF libish.a.p/fs_tty-real.c.o.d -o libish.a.p/fs_tty-real.c.o -c ../fs/tty-real.c",
+    "file": "../fs/tty-real.c",
+    "output": "libish.a.p/fs_tty-real.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_pty.c.o -MF libish.a.p/fs_pty.c.o.d -o libish.a.p/fs_pty.c.o -c ../fs/pty.c",
+    "file": "../fs/pty.c",
+    "output": "libish.a.p/fs_pty.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_tmp.c.o -MF libish.a.p/fs_tmp.c.o.d -o libish.a.p/fs_tmp.c.o -c ../fs/tmp.c",
+    "file": "../fs/tmp.c",
+    "output": "libish.a.p/fs_tmp.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/fs_poll.c.o -MF libish.a.p/fs_poll.c.o.d -o libish.a.p/fs_poll.c.o -c ../fs/poll.c",
+    "file": "../fs/poll.c",
+    "output": "libish.a.p/fs_poll.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_poll.c.o -MF libish.a.p/kernel_poll.c.o.d -o libish.a.p/kernel_poll.c.o -c ../kernel/poll.c",
+    "file": "../kernel/poll.c",
+    "output": "libish.a.p/kernel_poll.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/kernel_epoll.c.o -MF libish.a.p/kernel_epoll.c.o.d -o libish.a.p/kernel_epoll.c.o -c ../kernel/epoll.c",
+    "file": "../kernel/epoll.c",
+    "output": "libish.a.p/kernel_epoll.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/util_timer.c.o -MF libish.a.p/util_timer.c.o.d -o libish.a.p/util_timer.c.o -c ../util/timer.c",
+    "file": "../util/timer.c",
+    "output": "libish.a.p/util_timer.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/util_sync.c.o -MF libish.a.p/util_sync.c.o.d -o libish.a.p/util_sync.c.o -c ../util/sync.c",
+    "file": "../util/sync.c",
+    "output": "libish.a.p/util_sync.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/util_fifo.c.o -MF libish.a.p/util_fifo.c.o.d -o libish.a.p/util_fifo.c.o -c ../util/fifo.c",
+    "file": "../util/fifo.c",
+    "output": "libish.a.p/util_fifo.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/util_fchdir.c.o -MF libish.a.p/util_fchdir.c.o.d -o libish.a.p/util_fchdir.c.o -c ../util/fchdir.c",
+    "file": "../util/fchdir.c",
+    "output": "libish.a.p/util_fchdir.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/util_signpost.c.o -MF libish.a.p/util_signpost.c.o.d -o libish.a.p/util_signpost.c.o -c ../util/signpost.c",
+    "file": "../util/signpost.c",
+    "output": "libish.a.p/util_signpost.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Ilibish.a.p -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ libish.a.p/platform_darwin.c.o -MF libish.a.p/platform_darwin.c.o.d -o libish.a.p/platform_darwin.c.o -c ../platform/darwin.c",
+    "file": "../platform/darwin.c",
+    "output": "libish.a.p/platform_darwin.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Itools/fakefsify.p -Itools -I../tools -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -I/opt/homebrew/opt/libarchive/include -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ tools/fakefsify.p/fakefsify.c.o -MF tools/fakefsify.p/fakefsify.c.o.d -o tools/fakefsify.p/fakefsify.c.o -c ../tools/fakefsify.c",
+    "file": "../tools/fakefsify.c",
+    "output": "tools/fakefsify.p/fakefsify.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Itools/fakefsify.p -Itools -I../tools -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -I/opt/homebrew/opt/libarchive/include -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ tools/fakefsify.p/fakefs.c.o -MF tools/fakefsify.p/fakefs.c.o.d -o tools/fakefsify.p/fakefs.c.o -c ../tools/fakefs.c",
+    "file": "../tools/fakefs.c",
+    "output": "tools/fakefsify.p/fakefs.c.o"
+  },
+  {
+    "directory": "/Users/brooks/Documents/agentprojects/饭袋/OpenMinis/deps/ish/build-ios",
+    "command": "clang -arch arm64 -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -miphoneos-version-min=14.0 -Itools/fakefsify.p -Itools -I../tools -I. -I.. -Ivdso/arm64 -I../vdso/arm64 -I/opt/homebrew/opt/libarchive/include -fdiagnostics-color=always -Wall -Winvalid-pch -Wextra -std=gnu11 -O3 -Wimplicit-fallthrough -Wtautological-constant-in-range-compare -DLOG_HANDLER_NSLOG=1 -DENGINE_ASBESTOS=1 -DGUEST_ARM64=1 -Wno-switch -MD -MQ tools/fakefsify.p/.._util_fchdir.c.o -MF tools/fakefsify.p/.._util_fchdir.c.o.d -o tools/fakefsify.p/.._util_fchdir.c.o -c ../util/fchdir.c",
+    "file": "../util/fchdir.c",
+    "output": "tools/fakefsify.p/.._util_fchdir.c.o"
+  }
+]
