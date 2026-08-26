@@ -24,3 +24,4 @@ bench/
 tools/prebuilt_gadget_gen/__pycache__/
 tools/prebuilt_gadget_gen/*.bak
 .cache/
+build-ios/
