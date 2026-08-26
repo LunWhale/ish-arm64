@@ -5974,6 +5974,7 @@ make_fp_vec_two_reg_misc frintx_vec, frintx
 make_fp_vec_two_reg_misc frintz_vec, frintz
 make_fp_vec_two_reg_misc frinti_vec, frinti
 
+.macro make_fp_vec_cmp_zero name, insn
 .gadget \name\()_vec
     ldr x8, [_pc]
     add _pc, _pc, #8
